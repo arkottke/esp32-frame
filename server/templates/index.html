@@ -5,223 +5,637 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ESP-Frame</title>
 <style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
   :root {
-    --bg: #0f1117; --surface: #1a1d27; --border: #2e3348;
-    --accent: #4f8ef7; --text: #e2e8f0; --muted: #8892a4;
-    --green: #34d399; --red: #f87171; --yellow: #fbbf24;
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --danger:   #f85149;
+    --success:  #3fb950;
+    --radius:   8px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
-  h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 24px; }
-  h2 { font-size: 1.1rem; color: var(--muted); margin-bottom: 12px; }
 
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 20px; margin-bottom: 16px;
-  }
-  .frame-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .frame-name { font-size: 1.1rem; font-weight: 600; }
-  .mac { font-size: 0.75rem; color: var(--muted); font-family: monospace; }
-  .badge {
-    font-size: 0.7rem; padding: 2px 8px; border-radius: 999px;
-    background: var(--border); color: var(--muted);
-  }
-  .badge.seen { background: #1a3a2a; color: var(--green); }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; padding: 24px; }
+  h1   { font-size: 1.5rem; margin-bottom: 24px; color: #fff; }
+  h2   { font-size: 1rem; color: var(--muted); margin-bottom: 12px; font-weight: 500; }
 
-  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; margin-top: 12px; }
-  input, select, textarea {
-    width: 100%; padding: 8px 10px; background: var(--bg);
-    border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); font-size: 0.9rem;
-  }
-  textarea { min-height: 120px; font-family: monospace; resize: vertical; }
+  .frames { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
 
+  /* card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .card-header input[name=name] { flex: 1; min-width: 160px; font-size: 1rem; font-weight: 600; color: #fff; background: transparent; border: none; outline: none; }
+  .card-header input[name=name]:focus { border-bottom: 1px solid var(--accent); }
+  .mac   { font-family: monospace; font-size: 0.78rem; color: var(--muted); }
+  .badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; background: #21262d; color: var(--muted); white-space: nowrap; }
+  .badge.online { background: #1a3a2a; color: var(--success); }
+
+  .card-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* form */
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: flex; flex-direction: column; gap: 4px; }
+  label span { font-size: 0.78rem; color: var(--muted); }
+  input[type=text], input[type=number], select, textarea {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 6px 10px; font-size: 0.88rem; font-family: inherit; width: 100%;
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent);
+  }
+
+  /* plugin sections */
+  .plugin-fields { display: none; flex-direction: column; gap: 12px; }
+  .plugin-fields.active { display: flex; }
+
+  /* playlist editor */
+  .playlist-list { display: flex; flex-direction: column; gap: 6px; }
+  .pl-item {
+    display: flex; align-items: center; gap: 8px;
+    background: #0d1117; border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px;
+  }
+  .pl-item-type { font-size: 0.72rem; color: var(--muted); background: #21262d; padding: 2px 7px; border-radius: 12px; white-space: nowrap; }
+  .pl-item-label { flex: 1; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-add-form {
+    display: none; flex-direction: column; gap: 10px;
+    background: #0d1117; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; margin-top: 8px;
+  }
+  .pl-add-form.open { display: flex; }
+
+  /* buttons */
   .btn {
-    display: inline-block; padding: 8px 18px; border-radius: 6px;
-    font-size: 0.9rem; cursor: pointer; border: none; margin-top: 14px;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    font-size: 0.85rem; cursor: pointer; font-family: inherit; white-space: nowrap;
+    background: transparent; color: var(--text); transition: opacity .15s;
   }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-secondary { background: var(--border); color: var(--text); }
-  .btn:hover { opacity: 0.85; }
+  .btn:hover { opacity: .8; }
+  .btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .btn-danger  { border-color: var(--danger); color: var(--danger); }
+  .btn-sm  { padding: 3px 9px; font-size: 0.78rem; }
+  .btn-icon { padding: 2px 6px; }
 
-  .plugin-fields { margin-top: 8px; }
-  .row { display: flex; gap: 12px; }
-  .row > * { flex: 1; }
+  .card-footer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
 
-  .upload-section { margin-top: 24px; }
-  #upload-status { margin-top: 8px; font-size: 0.85rem; color: var(--green); }
+  /* preview panel */
+  .preview-panel { display: none; border-top: 1px solid var(--border); padding: 16px; gap: 16px; flex-wrap: wrap; }
+  .preview-panel.open { display: flex; }
+  .preview-col { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 8px; }
+  .preview-col h3 { font-size: 0.8rem; color: var(--muted); }
+  .preview-img { width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border); display: block; }
+  .preview-spinner {
+    width: 100%; aspect-ratio: 3/4; background: #0d1117; border-radius: 6px;
+    border: 1px dashed var(--border); display: flex; align-items: center;
+    justify-content: center; color: var(--muted); font-size: 0.85rem;
+  }
 
-  .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; }
-  .flash.success { background: #1a3a2a; color: var(--green); }
-  .flash.error   { background: #3a1a1a; color: var(--red); }
+  /* uploads */
+  .uploads-section { max-width: 860px; margin-top: 36px; }
+  .upload-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .upload-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
+  .upload-row span { flex: 1; font-family: monospace; font-size: 0.85rem; }
+
+  /* flash */
+  #flash { position: fixed; top: 16px; right: 16px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .flash-msg { padding: 10px 16px; border-radius: 6px; font-size: 0.85rem; background: var(--surface); border: 1px solid var(--border); max-width: 320px; }
+  .flash-msg.ok  { border-color: var(--success); color: var(--success); }
+  .flash-msg.err { border-color: var(--danger);  color: var(--danger); }
+
+  .empty { color: var(--muted); padding: 20px 0; font-size: 0.9rem; }
+  .no-frames { color: var(--muted); font-size: 0.95rem; padding: 24px 0; }
+
+  /* nickname */
+  .mac.nickname-set { font-size: 0.68rem; opacity: 0.5; }
+
+  /* state of health */
+  .soh-strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 16px 10px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--border); }
+  .soh-item  { white-space: nowrap; }
+
+  /* gallery plugin */
+  .gal-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; min-height: 0; }
+  .gal-thumb-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+  .gal-thumb {
+    width: 120px; height: 120px; object-fit: cover; border-radius: 6px;
+    border: 1px solid var(--border); display: block;
+    transition: transform .2s;
+  }
+  .gal-rotate {
+    position: absolute; bottom: 4px; right: 4px;
+    background: rgba(0,0,0,.65); color: #fff; border: none;
+    border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .gal-rotate:hover { background: rgba(0,0,0,.9); }
+  .gal-empty { color: var(--muted); font-size: 0.85rem; padding: 8px 0; }
 </style>
 </head>
 <body>
 
 <h1>ESP-Frame</h1>
-<div id="flash-area"></div>
+<div id="flash"></div>
 
-{% if not frames %}
-  <div class="card">
-    <p style="color:var(--muted)">No frames have checked in yet. Flash a device and it will appear here after its first poll.</p>
-  </div>
-{% endif %}
+<div class="frames">
+  {% if not frames %}
+  <p class="no-frames">No frames registered yet. Power on a device to auto-register it.</p>
+  {% endif %}
 
-{% for mac, frame in frames %}
-<div class="card" id="frame-{{ loop.index }}">
-  <div class="frame-header">
-    <div>
-      <div class="frame-name">{{ frame.name }}</div>
-      <div class="mac">{{ mac }}</div>
-    </div>
-    <div>
-      {% if frame.last_seen %}
-        <span class="badge seen">Last seen {{ frame.last_seen[:19].replace('T',' ') }} UTC</span>
-      {% else %}
-        <span class="badge">Never seen</span>
+  {% for mac, frame in frames %}
+  {% set p = frame.plugin %}
+  {% set ptype = p.get('type', 'static') %}
+  {% set cid = mac | replace(':', '-') %}
+  <div class="card" id="card-{{ cid }}">
+    <form onsubmit="return saveFrame(event, '{{ mac }}', this)">
+
+      <div class="card-header">
+        <input type="text" name="name" value="{{ frame.name | e }}" placeholder="Nickname" maxlength="64">
+        <span class="mac {% if frame.name != mac %}nickname-set{% endif %}">{{ mac }}</span>
+        {% if frame.last_seen %}
+          <span class="badge online" title="{{ frame.last_seen }}">{{ frame.last_seen[:16] | replace("T"," ") }}</span>
+        {% else %}
+          <span class="badge">Never seen</span>
+        {% endif %}
+      </div>
+
+      <div class="card-body">
+        <div class="row">
+          <label style="width:130px">
+            <span>Poll (seconds)</span>
+            <input type="number" name="poll_seconds" value="{{ frame.poll_seconds }}" min="60">
+          </label>
+          <label style="flex:1; min-width:160px">
+            <span>Plugin</span>
+            <select name="plugin_type" onchange="switchPlugin(this)">
+              <option value="static"      {% if ptype=='static'      %}selected{% endif %}>Static image</option>
+              <option value="gallery"     {% if ptype=='gallery'     %}selected{% endif %}>Gallery slideshow</option>
+              <option value="playlist"    {% if ptype=='playlist'    %}selected{% endif %}>Playlist</option>
+              <option value="weather"     {% if ptype=='weather'     %}selected{% endif %}>Weather forecast</option>
+              <option value="earthquakes" {% if ptype=='earthquakes' %}selected{% endif %}>CA earthquake sequence</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- STATIC -->
+        <div class="plugin-fields {% if ptype=='static' %}active{% endif %}" data-plugin="static">
+          <label>
+            <span>Image file</span>
+            <select name="static_filename">
+              <option value="" {% if not p.get('filename') %}selected{% endif %}>— blank white —</option>
+              {% for f in uploads %}
+              <option value="{{ f }}" {% if p.get('filename')==f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <!-- GALLERY -->
+        <div class="plugin-fields {% if ptype=='gallery' %}active{% endif %}" data-plugin="gallery">
+          <label>
+            <span>Directories (one absolute path per line)</span>
+            <textarea name="gal_directories" rows="4">{{ p.get('directories', []) | join('\n') | e }}</textarea>
+          </label>
+          <div class="row" style="align-items:flex-end">
+            <label style="width:200px">
+              <span>Zoom</span>
+              <select name="gal_zoom">
+                <option value="fill"    {% if p.get('zoom','fill')=='fill'    %}selected{% endif %}>Fill (crop to fit)</option>
+                <option value="fit"     {% if p.get('zoom','fill')=='fit'     %}selected{% endif %}>Fit (letterbox)</option>
+                <option value="stretch" {% if p.get('zoom','fill')=='stretch' %}selected{% endif %}>Stretch</option>
+                <option value="center"  {% if p.get('zoom','fill')=='center'  %}selected{% endif %}>Center (no scale)</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-sm" onclick="loadGallery(this.closest('.card'))">Browse</button>
+          </div>
+          <div class="gal-grid" data-rotations="{{ p.get('rotations', {}) | tojson | e }}"></div>
+        </div>
+
+        <!-- PLAYLIST -->
+        <div class="plugin-fields {% if ptype=='playlist' %}active{% endif %}" data-plugin="playlist">
+          <div class="playlist-list" id="pl-{{ cid }}">
+            {% for item in p.get('items', []) %}
+            <div class="pl-item" data-item="{{ item | tojson | e }}">
+              <span class="pl-item-type">{{ item.get('type','?') }}</span>
+              <span class="pl-item-label">{{ _pl_label(item) }}</span>
+              <button type="button" class="btn btn-icon btn-sm" title="Up"     onclick="plMove(this,-1)">↑</button>
+              <button type="button" class="btn btn-icon btn-sm" title="Down"   onclick="plMove(this,1)">↓</button>
+              <button type="button" class="btn btn-icon btn-sm btn-danger" onclick="plRemove(this)">✕</button>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- add-item form -->
+          <div>
+            <button type="button" class="btn btn-sm" onclick="toggleAddForm(this)">+ Add item</button>
+            <div class="pl-add-form">
+              <div class="row">
+                <label style="flex:1">
+                  <span>Type</span>
+                  <select name="new_item_type" onchange="switchAddForm(this)">
+                    <option value="static">Static image</option>
+                    <option value="weather">Weather forecast</option>
+                    <option value="earthquakes">CA earthquake sequence</option>
+                  </select>
+                </label>
+              </div>
+              <div class="plugin-fields active" data-addplugin="static">
+                <label><span>Image file</span>
+                  <select name="new_static_filename">
+                    <option value="">— blank white —</option>
+                    {% for f in uploads %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+                  </select>
+                </label>
+              </div>
+              <div class="plugin-fields" data-addplugin="weather">
+                <div class="row">
+                  <label style="width:110px"><span>Latitude</span><input type="number" step="any" name="new_weather_lat" value="0"></label>
+                  <label style="width:110px"><span>Longitude</span><input type="number" step="any" name="new_weather_lon" value="0"></label>
+                  <label style="flex:1"><span>Location</span><input type="text" name="new_weather_location" value=""></label>
+                </div>
+                <div class="row">
+                  <label style="width:130px"><span>Forecast hours</span><input type="number" name="new_weather_hours" value="48" min="12" max="168"></label>
+                  <label style="flex:1"><span>Unit</span>
+                    <select name="new_weather_unit">
+                      <option value="fahrenheit">Fahrenheit</option>
+                      <option value="celsius">Celsius</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="plugin-fields" data-addplugin="earthquakes">
+                <div class="row">
+                  <label style="width:130px"><span>Trailing window (days)</span><input type="number" name="new_eq_days" value="60"></label>
+                  <label style="width:140px"><span>Regional min magnitude</span><input type="number" step="0.1" name="new_eq_regional_min_mag" value="3.0"></label>
+                  <label style="width:140px"><span>Sequence min magnitude</span><input type="number" step="0.1" name="new_eq_local_min_mag" value="1.0"></label>
+                </div>
+                <div class="row">
+                  <label style="flex:1"><span>Basemap</span>
+                    <select name="new_eq_provider">
+                      <option value="usgs-topo">USGS Topo (recommended)</option>
+                      <option value="usgs-imagery-topo">USGS Imagery + Topo</option>
+                      <option value="natgeo">Esri NatGeo</option>
+                      <option value="esri-topo">Esri World Topo</option>
+                      <option value="opentopomap">OpenTopoMap</option>
+                      <option value="shaded-relief">Esri Shaded Relief</option>
+                      <option value="world-terrain">Esri World Terrain</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="row">
+                <button type="button" class="btn btn-primary btn-sm" onclick="plAddItem(this)">Add</button>
+                <button type="button" class="btn btn-sm" onclick="this.closest('.pl-add-form').classList.remove('open')">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div><!-- /playlist -->
+
+        <!-- WEATHER -->
+        <div class="plugin-fields {% if ptype=='weather' %}active{% endif %}" data-plugin="weather">
+          <div class="row">
+            <label style="width:110px"><span>Latitude</span><input type="number" step="any" name="weather_lat" value="{{ p.get('lat','') }}"></label>
+            <label style="width:110px"><span>Longitude</span><input type="number" step="any" name="weather_lon" value="{{ p.get('lon','') }}"></label>
+            <label style="flex:1"><span>Location name</span><input type="text" name="weather_location" value="{{ p.get('location_name','') | e }}"></label>
+          </div>
+          <div class="row">
+            <label style="width:140px"><span>Forecast hours</span><input type="number" name="weather_hours" value="{{ p.get('forecast_hours', 48) }}" min="12" max="168"></label>
+            <label style="flex:1"><span>Temperature unit</span>
+              <select name="weather_unit">
+                <option value="fahrenheit" {% if p.get('temperature_unit','fahrenheit')=='fahrenheit' %}selected{% endif %}>Fahrenheit</option>
+                <option value="celsius"    {% if p.get('temperature_unit','fahrenheit')=='celsius'    %}selected{% endif %}>Celsius</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <!-- EARTHQUAKES -->
+        <div class="plugin-fields {% if ptype=='earthquakes' %}active{% endif %}" data-plugin="earthquakes">
+          <div class="row">
+            <label style="width:130px"><span>Trailing window (days)</span><input type="number" name="eq_days" value="{{ p.get('days', 60) }}"></label>
+            <label style="width:140px"><span>Regional min magnitude</span><input type="number" step="0.1" name="eq_regional_min_mag" value="{{ p.get('regional_min_mag', 3.0) }}"></label>
+            <label style="width:140px"><span>Sequence min magnitude</span><input type="number" step="0.1" name="eq_local_min_mag" value="{{ p.get('local_min_mag', 1.0) }}"></label>
+          </div>
+          <div class="row">
+            <label style="flex:1"><span>Basemap</span>
+              <select name="eq_provider">
+                <option value="usgs-topo"         {% if p.get('provider','usgs-topo')=='usgs-topo'         %}selected{% endif %}>USGS Topo (recommended)</option>
+                <option value="usgs-imagery-topo" {% if p.get('provider','usgs-topo')=='usgs-imagery-topo' %}selected{% endif %}>USGS Imagery + Topo</option>
+                <option value="natgeo"             {% if p.get('provider','usgs-topo')=='natgeo'            %}selected{% endif %}>Esri NatGeo</option>
+                <option value="esri-topo"          {% if p.get('provider','usgs-topo')=='esri-topo'         %}selected{% endif %}>Esri World Topo</option>
+                <option value="opentopomap"        {% if p.get('provider','usgs-topo')=='opentopomap'       %}selected{% endif %}>OpenTopoMap</option>
+                <option value="shaded-relief"      {% if p.get('provider','usgs-topo')=='shaded-relief'     %}selected{% endif %}>Esri Shaded Relief</option>
+                <option value="world-terrain"      {% if p.get('provider','usgs-topo')=='world-terrain'     %}selected{% endif %}>Esri World Terrain</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div><!-- card-body -->
+
+      {% set soh = frame.get('soh') %}
+      {% if soh %}
+      <div class="soh-strip">
+        {% if soh.get('rssi') is not none %}
+          <span class="soh-item" title="WiFi signal">📶 {{ soh.rssi }} dBm</span>
+        {% endif %}
+        {% if soh.get('voltage_mv') is not none %}
+          <span class="soh-item" title="Supply voltage">🔋 {{ "%.2f"|format(soh.voltage_mv / 1000) }} V</span>
+        {% endif %}
+        {% if soh.get('wakeup') %}
+          <span class="soh-item" title="Last wakeup reason">⏱ {{ soh.wakeup }}</span>
+        {% endif %}
+        {% if soh.get('fw_ver') %}
+          <span class="soh-item" title="Firmware version">fw {{ soh.fw_ver }}</span>
+        {% endif %}
+        {% if soh.get('heap') is not none %}
+          <span class="soh-item" title="Free heap">heap {{ (soh.heap // 1024) }} KB</span>
+        {% endif %}
+      </div>
       {% endif %}
+
+      <div class="card-footer">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn" onclick="togglePreview(this, '{{ mac }}')">Preview</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-danger" onclick="deleteFrame('{{ mac }}')">Delete</button>
+      </div>
+    </form>
+
+    <!-- preview panel (outside form) -->
+    <div class="preview-panel" id="preview-{{ cid }}">
+      <div class="preview-col">
+        <h3>Rendered (PNG)</h3>
+        <div class="preview-spinner" id="spin-a-{{ cid }}">Loading…</div>
+      </div>
+      <div class="preview-col">
+        <h3>Dithered (EPD palette)</h3>
+        <div class="preview-spinner" id="spin-b-{{ cid }}">Loading…</div>
+      </div>
     </div>
+  </div><!-- card -->
+  {% endfor %}
+</div><!-- frames -->
+
+<!-- uploads -->
+<div class="uploads-section">
+  <h2>Uploaded images</h2>
+  <div class="upload-list" id="upload-list">
+    {% for f in uploads %}
+    <div class="upload-row">
+      <span>{{ f }}</span>
+      <button class="btn btn-danger btn-sm" onclick="deleteUpload('{{ f | e }}', this.closest('.upload-row'))">Delete</button>
+    </div>
+    {% else %}
+    <p class="empty">No uploads yet.</p>
+    {% endfor %}
   </div>
-
-  <form onsubmit="saveFrame(event, '{{ mac }}', this)">
-    <label>Display name</label>
-    <input name="name" value="{{ frame.name }}" required>
-
-    <label>Poll interval (seconds)</label>
-    <input name="poll_seconds" type="number" min="60" value="{{ frame.poll_seconds }}">
-
-    <label>Plugin type</label>
-    <select name="plugin_type" onchange="updatePluginFields(this)">
-      <option value="static"      {% if frame.plugin.type == 'static'      %}selected{% endif %}>Static image</option>
-      <option value="playlist"    {% if frame.plugin.type == 'playlist'    %}selected{% endif %}>Playlist</option>
-      <option value="weather"     {% if frame.plugin.type == 'weather'     %}selected{% endif %}>Weather forecast</option>
-      <option value="earthquakes" {% if frame.plugin.type == 'earthquakes' %}selected{% endif %}>Earthquake map</option>
-    </select>
-
-    <div class="plugin-fields">
-      <!-- static -->
-      <div class="pf pf-static" style="display:{% if frame.plugin.type == 'static' %}block{% else %}none{% endif %}">
-        <label>Image file</label>
-        <select name="static_filename">
-          <option value="">— blank white —</option>
-          {% for f in uploads %}
-            <option value="{{ f }}" {% if frame.plugin.get('filename') == f %}selected{% endif %}>{{ f }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- playlist -->
-      <div class="pf pf-playlist" style="display:{% if frame.plugin.type == 'playlist' %}block{% else %}none{% endif %}">
-        <label>Items (JSON array of plugin configs)</label>
-        <textarea name="playlist_items">{{ frame.plugin.get('items', []) | tojson(indent=2) if frame.plugin.type == 'playlist' else '[]' }}</textarea>
-      </div>
-
-      <!-- weather -->
-      <div class="pf pf-weather" style="display:{% if frame.plugin.type == 'weather' %}block{% else %}none{% endif %}">
-        <div class="row">
-          <div><label>Latitude</label><input name="weather_lat" type="number" step="0.0001" value="{{ frame.plugin.get('lat', '') }}"></div>
-          <div><label>Longitude</label><input name="weather_lon" type="number" step="0.0001" value="{{ frame.plugin.get('lon', '') }}"></div>
-        </div>
-        <label>Location name</label>
-        <input name="weather_location" value="{{ frame.plugin.get('location_name', '') }}">
-        <label>Days (1–7)</label>
-        <input name="weather_days" type="number" min="1" max="7" value="{{ frame.plugin.get('days', 5) }}">
-      </div>
-
-      <!-- earthquakes -->
-      <div class="pf pf-earthquakes" style="display:{% if frame.plugin.type == 'earthquakes' %}block{% else %}none{% endif %}">
-        <div class="row">
-          <div><label>Period (1, 7, or 30 days)</label><input name="eq_days" type="number" value="{{ frame.plugin.get('days', 7) }}"></div>
-          <div><label>Min magnitude</label><input name="eq_min_mag" type="number" step="0.1" value="{{ frame.plugin.get('min_magnitude', 4.5) }}"></div>
-        </div>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" type="submit">Save</button>
-  </form>
-</div>
-{% endfor %}
-
-<!-- Upload section -->
-<div class="card upload-section">
-  <h2>Upload image</h2>
-  <input type="file" id="upload-input" accept="image/*">
-  <button class="btn btn-secondary" onclick="uploadFile()">Upload</button>
-  <div id="upload-status"></div>
+  <label class="btn" style="cursor:pointer">
+    Upload image
+    <input type="file" accept="image/*" style="display:none" onchange="uploadFile(this)">
+  </label>
 </div>
 
 <script>
-function updatePluginFields(select) {
-  const card = select.closest('.card');
-  card.querySelectorAll('.pf').forEach(el => el.style.display = 'none');
-  const target = card.querySelector('.pf-' + select.value);
-  if (target) target.style.display = 'block';
+// --- plugin type switching ---
+function switchPlugin(sel) {
+  const body = sel.closest('.card-body');
+  body.querySelectorAll('.plugin-fields[data-plugin]').forEach(d => d.classList.remove('active'));
+  body.querySelector(`.plugin-fields[data-plugin="${sel.value}"]`)?.classList.add('active');
+}
+function switchAddForm(sel) {
+  const form = sel.closest('.pl-add-form');
+  form.querySelectorAll('.plugin-fields[data-addplugin]').forEach(d => d.classList.remove('active'));
+  form.querySelector(`.plugin-fields[data-addplugin="${sel.value}"]`)?.classList.add('active');
 }
 
+// --- playlist editor ---
+function toggleAddForm(btn) {
+  btn.nextElementSibling.classList.toggle('open');
+}
+function plLabel(item) {
+  if (item.type === 'static')      return item.filename || '(blank white)';
+  if (item.type === 'weather')     return item.location_name || `${item.lat ?? 0}, ${item.lon ?? 0}`;
+  if (item.type === 'earthquakes') return `${item.days ?? 60}d / regional M≥${item.regional_min_mag ?? 3.0}`;
+  return item.type;
+}
+function plMakeRow(item) {
+  const d = document.createElement('div');
+  d.className = 'pl-item';
+  d.dataset.item = JSON.stringify(item);
+  d.innerHTML = `<span class="pl-item-type">${item.type}</span>`
+    + `<span class="pl-item-label">${plLabel(item)}</span>`
+    + `<button type="button" class="btn btn-icon btn-sm" onclick="plMove(this,-1)">↑</button>`
+    + `<button type="button" class="btn btn-icon btn-sm" onclick="plMove(this,1)">↓</button>`
+    + `<button type="button" class="btn btn-icon btn-sm btn-danger" onclick="plRemove(this)">✕</button>`;
+  return d;
+}
+function plAddItem(btn) {
+  const form = btn.closest('.pl-add-form');
+  const type = form.querySelector('[name=new_item_type]').value;
+  let item = { type };
+  if (type === 'static') {
+    item.filename = form.querySelector('[name=new_static_filename]').value;
+  } else if (type === 'weather') {
+    item.lat              = parseFloat(form.querySelector('[name=new_weather_lat]').value);
+    item.lon              = parseFloat(form.querySelector('[name=new_weather_lon]').value);
+    item.location_name    = form.querySelector('[name=new_weather_location]').value;
+    item.forecast_hours   = parseInt(form.querySelector('[name=new_weather_hours]').value);
+    item.temperature_unit = form.querySelector('[name=new_weather_unit]').value;
+  } else if (type === 'earthquakes') {
+    item.days             = parseInt(form.querySelector('[name=new_eq_days]').value);
+    item.regional_min_mag = parseFloat(form.querySelector('[name=new_eq_regional_min_mag]').value);
+    item.local_min_mag    = parseFloat(form.querySelector('[name=new_eq_local_min_mag]').value);
+    item.provider         = form.querySelector('[name=new_eq_provider]').value;
+  }
+  const list = form.closest('.plugin-fields[data-plugin=playlist]').querySelector('.playlist-list');
+  list.appendChild(plMakeRow(item));
+  form.classList.remove('open');
+}
+function plRemove(btn) { btn.closest('.pl-item').remove(); }
+function plMove(btn, dir) {
+  const row = btn.closest('.pl-item'), list = row.parentElement;
+  const items = [...list.children], idx = items.indexOf(row), swap = items[idx + dir];
+  if (swap) dir === -1 ? list.insertBefore(row, swap) : list.insertBefore(swap, row);
+}
+function plCollect(card) {
+  return [...card.querySelectorAll('.playlist-list .pl-item')].map(r => JSON.parse(r.dataset.item));
+}
+
+// --- save frame ---
 async function saveFrame(e, mac, form) {
   e.preventDefault();
-  const data = new FormData(form);
-  const pluginType = data.get('plugin_type');
-
-  let plugin = { type: pluginType };
-  if (pluginType === 'static') {
-    plugin.filename = data.get('static_filename') || '';
-  } else if (pluginType === 'playlist') {
-    try { plugin.items = JSON.parse(data.get('playlist_items')); }
-    catch { showFlash('Playlist items must be valid JSON', 'error'); return; }
-  } else if (pluginType === 'weather') {
-    plugin.lat = parseFloat(data.get('weather_lat')) || 0;
-    plugin.lon = parseFloat(data.get('weather_lon')) || 0;
-    plugin.location_name = data.get('weather_location') || '';
-    plugin.days = parseInt(data.get('weather_days')) || 5;
-  } else if (pluginType === 'earthquakes') {
-    plugin.days = parseInt(data.get('eq_days')) || 7;
-    plugin.min_magnitude = parseFloat(data.get('eq_min_mag')) || 4.5;
+  const d = new FormData(form);
+  const type = d.get('plugin_type');
+  let plugin = { type };
+  if (type === 'static') {
+    plugin.filename = d.get('static_filename') || '';
+  } else if (type === 'playlist') {
+    plugin.items = plCollect(form.closest('.card'));
+  } else if (type === 'weather') {
+    plugin.lat              = parseFloat(d.get('weather_lat'));
+    plugin.lon              = parseFloat(d.get('weather_lon'));
+    plugin.location_name    = d.get('weather_location');
+    plugin.forecast_hours   = parseInt(d.get('weather_hours'));
+    plugin.temperature_unit = d.get('weather_unit');
+  } else if (type === 'earthquakes') {
+    plugin.days             = parseInt(d.get('eq_days'));
+    plugin.regional_min_mag = parseFloat(d.get('eq_regional_min_mag'));
+    plugin.local_min_mag    = parseFloat(d.get('eq_local_min_mag'));
+    plugin.provider         = d.get('eq_provider');
+  } else if (type === 'gallery') {
+    plugin.directories = d.get('gal_directories').trim().split('\n').map(s => s.trim()).filter(Boolean);
+    plugin.zoom        = d.get('gal_zoom');
+    plugin.rotations   = galCollectRotations(form.closest('.card'));
   }
-
-  const body = {
-    name: data.get('name'),
-    poll_seconds: parseInt(data.get('poll_seconds')),
-    plugin,
-  };
-
-  const resp = await fetch('/api/frame/' + encodeURIComponent(mac), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (resp.ok) {
-    showFlash('Saved!', 'success');
-  } else {
-    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    showFlash('Error: ' + (err.detail || resp.statusText), 'error');
-  }
+  try {
+    const r = await fetch(`/api/frame/${mac}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name: d.get('name'), poll_seconds: parseInt(d.get('poll_seconds')), plugin }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    flash('Saved', 'ok');
+  } catch(err) { flash(`Save failed: ${err.message}`, 'err'); }
+  return false;
 }
 
-async function uploadFile() {
-  const input = document.getElementById('upload-input');
-  const status = document.getElementById('upload-status');
-  if (!input.files.length) { status.textContent = 'No file selected.'; return; }
+// --- delete frame ---
+async function deleteFrame(mac) {
+  if (!confirm(`Delete frame ${mac}?\nThe device will re-register on next poll.`)) return;
+  const r = await fetch(`/api/frame/${mac}`, { method: 'DELETE' });
+  if (r.ok) { document.getElementById('card-' + mac.replace(/:/g,'-'))?.remove(); flash('Deleted', 'ok'); }
+  else flash('Delete failed', 'err');
+}
+
+// --- preview ---
+function togglePreview(btn, mac) {
+  const cid   = mac.replace(/:/g, '-');
+  const panel = document.getElementById(`preview-${cid}`);
+  const open  = panel.classList.toggle('open');
+  btn.textContent = open ? 'Hide preview' : 'Preview';
+  if (!open) return;
+  const ts = Date.now();
+  loadPreviewImg(`spin-a-${cid}`, `/api/frame/${mac}/preview.png?t=${ts}`);
+  loadPreviewImg(`spin-b-${cid}`, `/api/frame/${mac}/preview-dithered.png?t=${ts}`);
+}
+function loadPreviewImg(spinnerId, url) {
+  const spin = document.getElementById(spinnerId);
+  spin.textContent = 'Loading…';
+  spin.style.display = 'flex';
+  const prev = spin.nextElementSibling;
+  if (prev?.tagName === 'IMG') prev.remove();
+  const img = new Image();
+  img.className = 'preview-img';
+  img.onload  = () => { spin.style.display = 'none'; spin.insertAdjacentElement('afterend', img); };
+  img.onerror = () => { spin.textContent = 'Failed to load'; };
+  img.src = url;
+}
+
+// --- uploads ---
+async function uploadFile(input) {
+  if (!input.files.length) return;
   const form = new FormData();
   form.append('file', input.files[0]);
-  const resp = await fetch('/api/upload', { method: 'POST', body: form });
-  if (resp.ok) {
-    const data = await resp.json();
-    status.textContent = 'Uploaded: ' + data.filename;
-    setTimeout(() => location.reload(), 1000);
+  const r = await fetch('/api/upload', { method: 'POST', body: form });
+  if (r.ok) {
+    const { filename } = await r.json();
+    const list = document.getElementById('upload-list');
+    list.querySelector('.empty')?.remove();
+    const row = document.createElement('div');
+    row.className = 'upload-row';
+    row.innerHTML = `<span>${filename}</span><button class="btn btn-danger btn-sm" onclick="deleteUpload('${filename.replace(/'/g,"\\'")}',this.closest('.upload-row'))">Delete</button>`;
+    list.appendChild(row);
+    flash(`Uploaded ${filename}`, 'ok');
+  } else flash('Upload failed', 'err');
+  input.value = '';
+}
+async function deleteUpload(filename, row) {
+  if (!confirm(`Delete ${filename}?`)) return;
+  const r = await fetch(`/api/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  if (r.ok) { row.remove(); flash(`Deleted ${filename}`, 'ok'); }
+  else flash('Delete failed', 'err');
+}
+
+// --- gallery plugin ---
+async function loadGallery(card) {
+  const textarea = card.querySelector('[name=gal_directories]');
+  const dirs = textarea.value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const grid = card.querySelector('.gal-grid');
+  const savedRotations = JSON.parse(grid.dataset.rotations || '{}');
+
+  // Preserve any rotations already set in the current DOM before clearing
+  const currentRotations = galCollectRotations(card);
+  const mergedRotations = Object.assign({}, savedRotations, currentRotations);
+
+  grid.innerHTML = '<span class="gal-empty">Loading…</span>';
+  if (!dirs.length) { grid.innerHTML = ''; return; }
+
+  let totalFiles = 0;
+  const fragment = document.createDocumentFragment();
+
+  for (const dir of dirs) {
+    let data;
+    try {
+      const resp = await fetch(`/api/directory/files?path=${encodeURIComponent(dir)}`);
+      if (!resp.ok) continue;
+      data = await resp.json();
+    } catch { continue; }
+
+    for (const file of data.files) {
+      totalFiles++;
+      const rotation = mergedRotations[file.name] ?? 0;
+      const wrap = document.createElement('div');
+      wrap.className = 'gal-thumb-wrap';
+      const imgUrl = `/api/directory/image?path=${encodeURIComponent(file.path)}&size=120`;
+      wrap.innerHTML =
+        `<img class="gal-thumb" src="${imgUrl}" data-name="${file.name.replace(/"/g,'&quot;')}"` +
+        ` data-rotation="${rotation}" style="transform:rotate(${rotation}deg)" title="${file.name.replace(/"/g,'&quot;')}">`+
+        `<button type="button" class="gal-rotate" onclick="galRotate(this)">&#8635;</button>`;
+      fragment.appendChild(wrap);
+    }
+  }
+
+  grid.innerHTML = '';
+  if (totalFiles === 0) {
+    grid.innerHTML = '<span class="gal-empty">No images found.</span>';
   } else {
-    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    status.textContent = 'Error: ' + (err.detail || resp.statusText);
+    grid.appendChild(fragment);
   }
 }
 
-function showFlash(msg, type) {
+function galRotate(btn) {
+  const img = btn.previousElementSibling;
+  const next = (parseInt(img.dataset.rotation || '0') + 90) % 360;
+  img.dataset.rotation = next;
+  img.style.transform = `rotate(${next}deg)`;
+}
+
+function galCollectRotations(card) {
+  const rotations = {};
+  card.querySelectorAll('.gal-thumb[data-rotation]').forEach(img => {
+    const r = parseInt(img.dataset.rotation);
+    if (r !== 0) rotations[img.dataset.name] = r;
+  });
+  return rotations;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.plugin-fields[data-plugin="gallery"].active').forEach(section => {
+    const card = section.closest('.card');
+    if (card) loadGallery(card);
+  });
+});
+
+// --- flash ---
+function flash(msg, type) {
   const el = document.createElement('div');
-  el.className = 'flash ' + type;
+  el.className = `flash-msg ${type}`;
   el.textContent = msg;
-  const area = document.getElementById('flash-area');
-  area.prepend(el);
-  setTimeout(() => el.remove(), 4000);
+  document.getElementById('flash').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
 }
 </script>
 </body>
