@@ -19,6 +19,10 @@
 #include "pindefine.h"
 #include "status.h"
 
+#if BATT_ADC_CHANNEL >= 0
+#include "driver/adc.h"
+#endif
+
 static const char *TAG = "app_main";
 
 /* -------------------------------------------------------------------------
@@ -29,22 +33,24 @@ static const char *TAG = "app_main";
 
 static void check_factory_reset(void)
 {
+    /* SW4 is active-HIGH: button connects IO14 to VCC; board has pull-down to GND */
     gpio_config_t io = {
         .pin_bit_mask = 1ULL << SW4,
         .mode         = GPIO_MODE_INPUT,
-        .pull_up_en   = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&io);
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-    if (gpio_get_level(SW4) != 0) return;  /* not pressed at boot */
+    if (gpio_get_level(SW4) == 0) return;  /* not pressed at boot */
 
     ESP_LOGI(TAG, "SW4 held — hold for %d s to factory reset", FACTORY_RESET_HOLD_MS / 1000);
     int elapsed = 0;
     while (elapsed < FACTORY_RESET_HOLD_MS) {
         vTaskDelay(pdMS_TO_TICKS(FACTORY_RESET_POLL_MS));
-        if (gpio_get_level(SW4) != 0) {
+        if (gpio_get_level(SW4) == 0) {
             ESP_LOGI(TAG, "SW4 released early, skipping factory reset");
             return;
         }
@@ -123,6 +129,18 @@ static esp_err_t wifi_connect(const char *ssid, const char *password)
     return ESP_FAIL;
 }
 
+#if BATT_ADC_CHANNEL >= 0
+static int read_battery_mv(void)
+{
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(BATT_ADC_CHANNEL, ADC_ATTEN_DB_11);
+    int raw = adc1_get_raw(BATT_ADC_CHANNEL);
+    /* Linear approximation assuming 3.3 V Vref and a 1:1 divider.
+       Adjust the multiplier to match your actual divider ratio. */
+    return (raw * 3300) / 4095;
+}
+#endif
+
 static void get_mac_string(char *out, size_t out_len)
 {
     uint8_t mac[6];
@@ -186,15 +204,38 @@ void app_main(void)
     get_mac_string(mac_str, sizeof(mac_str));
     ESP_LOGI(TAG, "Frame MAC: %s", mac_str);
 
+    /* Build state-of-health telemetry */
+    frame_soh_t soh = {0};
+
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)
+        soh.rssi = ap_info.rssi;
+
+#if BATT_ADC_CHANNEL >= 0
+    soh.voltage_mv = read_battery_mv();
+#else
+    soh.voltage_mv = -1;
+#endif
+
+    if      (wakeup_causes & BIT(ESP_SLEEP_WAKEUP_TIMER)) strlcpy(soh.wakeup, "timer",  sizeof(soh.wakeup));
+    else if (wakeup_causes & BIT(ESP_SLEEP_WAKEUP_EXT1))  strlcpy(soh.wakeup, "button", sizeof(soh.wakeup));
+    else                                                   strlcpy(soh.wakeup, "boot",   sizeof(soh.wakeup));
+
+    strlcpy(soh.fw_ver, FW_VERSION, sizeof(soh.fw_ver));
+    soh.heap = (int)esp_get_free_heap_size();
+
+    ESP_LOGI(TAG, "SoH: rssi=%d voltage_mv=%d wakeup=%s fw=%s heap=%d",
+             soh.rssi, soh.voltage_mv, soh.wakeup, soh.fw_ver, soh.heap);
+
     /* Fetch image from server and display it */
-    err = epd_http_fetch_and_display(cfg.server_url, mac_str);
+    err = epd_http_fetch_and_display(cfg.server_url, mac_str, &soh);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Image fetch failed (%s), keeping current display",
                  esp_err_to_name(err));
     }
 
     /* Sleep until next poll; SW2 can also wake early for a manual refresh */
-    esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
     ESP_LOGI(TAG, "Entering deep sleep for %lu s", (unsigned long)cfg.poll_seconds);
     esp_deep_sleep((uint64_t)cfg.poll_seconds * 1000000ULL);
 }

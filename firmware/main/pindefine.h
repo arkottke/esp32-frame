@@ -26,4 +26,11 @@
 #define GPIO_LOW	0
 #define GPIO_HIGH	1
 
+//==============  State-of-health  ==============//
+// Set BATT_ADC_CHANNEL to the ADC1 channel number wired to your voltage
+// divider (e.g. ADC_CHANNEL_0 for GPIO1). Leave as -1 to disable.
+#define BATT_ADC_CHANNEL  -1
+
+#define FW_VERSION  "1.0.0"
+
 #endif //#ifndef __PINDEFINE_H__

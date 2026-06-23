@@ -34,11 +34,22 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-esp_err_t epd_http_fetch_and_display(const char *server_url, const char *mac_str)
+esp_err_t epd_http_fetch_and_display(const char *server_url, const char *mac_str,
+                                     const frame_soh_t *soh)
 {
-    /* Build URL: {server_url}/frame/{mac}/image */
-    char url[256];
-    snprintf(url, sizeof(url), "%s/frame/%s/image", server_url, mac_str);
+    /* Build URL: {server_url}/frame/{mac}/image?rssi=X&wakeup=Y&... */
+    char url[512];
+    if (soh->voltage_mv >= 0) {
+        snprintf(url, sizeof(url),
+            "%s/frame/%s/image?rssi=%d&voltage_mv=%d&wakeup=%s&fw_ver=%s&heap=%d",
+            server_url, mac_str,
+            soh->rssi, soh->voltage_mv, soh->wakeup, soh->fw_ver, soh->heap);
+    } else {
+        snprintf(url, sizeof(url),
+            "%s/frame/%s/image?rssi=%d&wakeup=%s&fw_ver=%s&heap=%d",
+            server_url, mac_str,
+            soh->rssi, soh->wakeup, soh->fw_ver, soh->heap);
+    }
     ESP_LOGI(TAG, "Fetching image from %s", url);
 
     /* Allocate image buffer in PSRAM */
