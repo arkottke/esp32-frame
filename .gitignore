@@ -1,6 +1,9 @@
 # Reference firmware (read-only manufacturer code)
 ref-gdep133c02/
 
+# Local credentials — never commit
+.env
+
 # ESP-IDF build artifacts
 firmware/build/
 firmware/sdkconfig

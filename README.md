@@ -57,7 +57,7 @@ idf.py flash
 If the device is not auto-detected, specify the port:
 
 ```bash
-idf.py -p /dev/ttyACM0 flash
+idf.py -p /dev/ttyUSB0 flash
 ```
 
 ### 6. Monitor serial output
