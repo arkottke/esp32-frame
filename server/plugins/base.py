@@ -31,12 +31,14 @@ class Plugin(ABC):
         from plugins.playlist import PlaylistPlugin
         from plugins.weather import WeatherPlugin
         from plugins.earthquakes import EarthquakePlugin
+        from plugins.gallery import GalleryPlugin
 
         registry: dict[str, type[Plugin]] = {
             "static": StaticPlugin,
             "playlist": PlaylistPlugin,
             "weather": WeatherPlugin,
             "earthquakes": EarthquakePlugin,
+            "gallery": GalleryPlugin,
         }
         plugin_type = config.get("type", "static")
         if plugin_type not in registry:
