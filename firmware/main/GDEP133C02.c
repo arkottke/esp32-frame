@@ -89,12 +89,12 @@ void setPinCs(unsigned char csNumber, unsigned int setLevel){
 }
 void checkBusyHigh(void)// If BUSYN=0 then waiting
 {
-	while(!(getGpioLevel(EPD_BUSY)));
+	while(!(getGpioLevel(EPD_BUSY))) vTaskDelay(pdMS_TO_TICKS(10));
 }
 
 void checkBusyLow(void)// If BUSYN=1 then waiting
 {
-	while(getGpioLevel(EPD_BUSY));
+	while(getGpioLevel(EPD_BUSY)) vTaskDelay(pdMS_TO_TICKS(10));
 }
 //====================================================================
 
