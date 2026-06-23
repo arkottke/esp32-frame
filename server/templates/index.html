@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP-Frame</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2e3348;
+    --accent: #4f8ef7; --text: #e2e8f0; --muted: #8892a4;
+    --green: #34d399; --red: #f87171; --yellow: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
+  h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 24px; }
+  h2 { font-size: 1.1rem; color: var(--muted); margin-bottom: 12px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 16px;
+  }
+  .frame-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .frame-name { font-size: 1.1rem; font-weight: 600; }
+  .mac { font-size: 0.75rem; color: var(--muted); font-family: monospace; }
+  .badge {
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 999px;
+    background: var(--border); color: var(--muted);
+  }
+  .badge.seen { background: #1a3a2a; color: var(--green); }
+
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; margin-top: 12px; }
+  input, select, textarea {
+    width: 100%; padding: 8px 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 0.9rem;
+  }
+  textarea { min-height: 120px; font-family: monospace; resize: vertical; }
+
+  .btn {
+    display: inline-block; padding: 8px 18px; border-radius: 6px;
+    font-size: 0.9rem; cursor: pointer; border: none; margin-top: 14px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn:hover { opacity: 0.85; }
+
+  .plugin-fields { margin-top: 8px; }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+
+  .upload-section { margin-top: 24px; }
+  #upload-status { margin-top: 8px; font-size: 0.85rem; color: var(--green); }
+
+  .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; }
+  .flash.success { background: #1a3a2a; color: var(--green); }
+  .flash.error   { background: #3a1a1a; color: var(--red); }
+</style>
+</head>
+<body>
+
+<h1>ESP-Frame</h1>
+<div id="flash-area"></div>
+
+{% if not frames %}
+  <div class="card">
+    <p style="color:var(--muted)">No frames have checked in yet. Flash a device and it will appear here after its first poll.</p>
+  </div>
+{% endif %}
+
+{% for mac, frame in frames %}
+<div class="card" id="frame-{{ loop.index }}">
+  <div class="frame-header">
+    <div>
+      <div class="frame-name">{{ frame.name }}</div>
+      <div class="mac">{{ mac }}</div>
+    </div>
+    <div>
+      {% if frame.last_seen %}
+        <span class="badge seen">Last seen {{ frame.last_seen[:19].replace('T',' ') }} UTC</span>
+      {% else %}
+        <span class="badge">Never seen</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <form onsubmit="saveFrame(event, '{{ mac }}', this)">
+    <label>Display name</label>
+    <input name="name" value="{{ frame.name }}" required>
+
+    <label>Poll interval (seconds)</label>
+    <input name="poll_seconds" type="number" min="60" value="{{ frame.poll_seconds }}">
+
+    <label>Plugin type</label>
+    <select name="plugin_type" onchange="updatePluginFields(this)">
+      <option value="static"      {% if frame.plugin.type == 'static'      %}selected{% endif %}>Static image</option>
+      <option value="playlist"    {% if frame.plugin.type == 'playlist'    %}selected{% endif %}>Playlist</option>
+      <option value="weather"     {% if frame.plugin.type == 'weather'     %}selected{% endif %}>Weather forecast</option>
+      <option value="earthquakes" {% if frame.plugin.type == 'earthquakes' %}selected{% endif %}>Earthquake map</option>
+    </select>
+
+    <div class="plugin-fields">
+      <!-- static -->
+      <div class="pf pf-static" style="display:{% if frame.plugin.type == 'static' %}block{% else %}none{% endif %}">
+        <label>Image file</label>
+        <select name="static_filename">
+          <option value="">— blank white —</option>
+          {% for f in uploads %}
+            <option value="{{ f }}" {% if frame.plugin.get('filename') == f %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- playlist -->
+      <div class="pf pf-playlist" style="display:{% if frame.plugin.type == 'playlist' %}block{% else %}none{% endif %}">
+        <label>Items (JSON array of plugin configs)</label>
+        <textarea name="playlist_items">{{ frame.plugin.get('items', []) | tojson(indent=2) if frame.plugin.type == 'playlist' else '[]' }}</textarea>
+      </div>
+
+      <!-- weather -->
+      <div class="pf pf-weather" style="display:{% if frame.plugin.type == 'weather' %}block{% else %}none{% endif %}">
+        <div class="row">
+          <div><label>Latitude</label><input name="weather_lat" type="number" step="0.0001" value="{{ frame.plugin.get('lat', '') }}"></div>
+          <div><label>Longitude</label><input name="weather_lon" type="number" step="0.0001" value="{{ frame.plugin.get('lon', '') }}"></div>
+        </div>
+        <label>Location name</label>
+        <input name="weather_location" value="{{ frame.plugin.get('location_name', '') }}">
+        <label>Days (1–7)</label>
+        <input name="weather_days" type="number" min="1" max="7" value="{{ frame.plugin.get('days', 5) }}">
+      </div>
+
+      <!-- earthquakes -->
+      <div class="pf pf-earthquakes" style="display:{% if frame.plugin.type == 'earthquakes' %}block{% else %}none{% endif %}">
+        <div class="row">
+          <div><label>Period (1, 7, or 30 days)</label><input name="eq_days" type="number" value="{{ frame.plugin.get('days', 7) }}"></div>
+          <div><label>Min magnitude</label><input name="eq_min_mag" type="number" step="0.1" value="{{ frame.plugin.get('min_magnitude', 4.5) }}"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+</div>
+{% endfor %}
+
+<!-- Upload section -->
+<div class="card upload-section">
+  <h2>Upload image</h2>
+  <input type="file" id="upload-input" accept="image/*">
+  <button class="btn btn-secondary" onclick="uploadFile()">Upload</button>
+  <div id="upload-status"></div>
+</div>
+
+<script>
+function updatePluginFields(select) {
+  const card = select.closest('.card');
+  card.querySelectorAll('.pf').forEach(el => el.style.display = 'none');
+  const target = card.querySelector('.pf-' + select.value);
+  if (target) target.style.display = 'block';
+}
+
+async function saveFrame(e, mac, form) {
+  e.preventDefault();
+  const data = new FormData(form);
+  const pluginType = data.get('plugin_type');
+
+  let plugin = { type: pluginType };
+  if (pluginType === 'static') {
+    plugin.filename = data.get('static_filename') || '';
+  } else if (pluginType === 'playlist') {
+    try { plugin.items = JSON.parse(data.get('playlist_items')); }
+    catch { showFlash('Playlist items must be valid JSON', 'error'); return; }
+  } else if (pluginType === 'weather') {
+    plugin.lat = parseFloat(data.get('weather_lat')) || 0;
+    plugin.lon = parseFloat(data.get('weather_lon')) || 0;
+    plugin.location_name = data.get('weather_location') || '';
+    plugin.days = parseInt(data.get('weather_days')) || 5;
+  } else if (pluginType === 'earthquakes') {
+    plugin.days = parseInt(data.get('eq_days')) || 7;
+    plugin.min_magnitude = parseFloat(data.get('eq_min_mag')) || 4.5;
+  }
+
+  const body = {
+    name: data.get('name'),
+    poll_seconds: parseInt(data.get('poll_seconds')),
+    plugin,
+  };
+
+  const resp = await fetch('/api/frame/' + encodeURIComponent(mac), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (resp.ok) {
+    showFlash('Saved!', 'success');
+  } else {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    showFlash('Error: ' + (err.detail || resp.statusText), 'error');
+  }
+}
+
+async function uploadFile() {
+  const input = document.getElementById('upload-input');
+  const status = document.getElementById('upload-status');
+  if (!input.files.length) { status.textContent = 'No file selected.'; return; }
+  const form = new FormData();
+  form.append('file', input.files[0]);
+  const resp = await fetch('/api/upload', { method: 'POST', body: form });
+  if (resp.ok) {
+    const data = await resp.json();
+    status.textContent = 'Uploaded: ' + data.filename;
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    status.textContent = 'Error: ' + (err.detail || resp.statusText);
+  }
+}
+
+function showFlash(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'flash ' + type;
+  el.textContent = msg;
+  const area = document.getElementById('flash-area');
+  area.prepend(el);
+  setTimeout(() => el.remove(), 4000);
+}
+</script>
+</body>
+</html>

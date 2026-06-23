@@ -1,0 +1,23 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "nvs_config.c"
+        "captive_portal.c"
+        "epd_http.c"
+        "GDEP133C02.c"
+        "comm.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_netif
+        esp_http_server
+        esp_http_client
+        esp_event
+        esp_driver_gpio
+        esp_driver_spi
+        freertos
+        heap
+        log
+        lwip
+)

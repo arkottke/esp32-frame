@@ -1,0 +1,22 @@
+# Reference firmware (read-only manufacturer code)
+ref-gdep133c02/
+
+# ESP-IDF build artifacts
+firmware/build/
+firmware/sdkconfig
+firmware/dependencies.lock
+firmware/managed_components/
+
+# Python
+server/__pycache__/
+server/.venv/
+server/*.pyc
+server/uploads/
+server/config.json
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / OS
+.DS_Store
+*.swp
