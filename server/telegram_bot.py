@@ -20,12 +20,12 @@ from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ReactionEmoji
-from telegram.ext import Application, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"]
-GALLERY_DIR  = Path(os.environ.get("TELEGRAM_GALLERY_DIR",
-                    str(Path(__file__).parent / "telegram-gallery")))
-ALLOWED_CHAT = os.environ.get("TELEGRAM_ALLOWED_CHAT_ID")
+BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"].strip()
+GALLERY_DIR  = Path((os.environ.get("TELEGRAM_GALLERY_DIR") or "").strip()
+                    or str(Path(__file__).parent / "telegram-gallery"))
+ALLOWED_CHAT = (os.environ.get("TELEGRAM_ALLOWED_CHAT_ID") or "").strip() or None
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
@@ -56,23 +56,36 @@ async def _save_and_react(
     await update.message.set_reaction(ReactionEmoji.THUMBS_UP)
 
 
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(str(update.effective_chat.id))
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    chat = update.effective_chat
+    log.info("Photo from %s (user %s, chat %s)", user.username or user.full_name, user.id, chat.id)
     if not _allowed(update):
+        log.warning("Ignored photo from chat %s — not in allowlist", chat.id)
         return
     photo = update.message.photo[-1]  # largest available resolution
     await _save_and_react(update, context, photo.file_id, photo.file_unique_id, ".jpg")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _allowed(update):
-        return
+    user = update.effective_user
+    chat = update.effective_chat
     doc = update.message.document
+    log.info("Document from %s (user %s, chat %s): %s", user.username or user.full_name, user.id, chat.id, doc.file_name)
+    if not _allowed(update):
+        log.warning("Ignored document from chat %s — not in allowlist", chat.id)
+        return
     ext = mimetypes.guess_extension(doc.mime_type or "") or ".jpg"
     await _save_and_react(update, context, doc.file_id, doc.file_unique_id, ext)
 
 
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("id", cmd_id))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.IMAGE, handle_document))
     log.info("Bot polling…")

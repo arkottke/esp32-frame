@@ -4,6 +4,9 @@ PIP    := $(VENV)/bin/pip
 HOST   := 0.0.0.0
 PORT   := 8000
 
+-include ../.env
+export TELEGRAM_BOT_TOKEN TELEGRAM_GALLERY_DIR TELEGRAM_ALLOWED_CHAT_ID
+
 .PHONY: run bot install venv clean
 
 run: $(VENV)

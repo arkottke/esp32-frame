@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import random
 from dataclasses import dataclass, field
@@ -19,7 +20,37 @@ class _DirState:
     queued: set[str] = field(default_factory=set)
 
 
+_STATE_FILE = Path(__file__).parent.parent / "gallery_state.json"
 _state: dict[str, _DirState] = {}
+
+
+def _load_state() -> None:
+    if not _STATE_FILE.exists():
+        return
+    try:
+        data = json.loads(_STATE_FILE.read_text())
+    except Exception:
+        return
+    for dir_path, d in data.items():
+        s = _DirState()
+        s.seen   = set(d.get("seen", []))
+        s.queue  = list(d.get("queue", []))
+        s.queued = set(s.queue)
+        _state[dir_path] = s
+
+
+def _save_state() -> None:
+    try:
+        data = {
+            path: {"seen": list(s.seen), "queue": s.queue}
+            for path, s in _state.items()
+        }
+        _STATE_FILE.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
+
+
+_load_state()
 
 
 class GalleryPlugin(Plugin):
@@ -77,6 +108,7 @@ class GalleryPlugin(Plugin):
                 return Plugin.blank_white()
             chosen = random.choice(all_files)
 
+        _save_state()
         img = Image.open(chosen).convert("RGB")
 
         rotation = self._rotations.get(Path(chosen).name, 0)

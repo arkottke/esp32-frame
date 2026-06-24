@@ -30,6 +30,7 @@ class Plugin(ABC):
         from plugins.static import StaticPlugin
         from plugins.playlist import PlaylistPlugin
         from plugins.weather import WeatherPlugin
+        from plugins.weather_ensemble import WeatherEnsemblePlugin
         from plugins.earthquakes import EarthquakePlugin
         from plugins.gallery import GalleryPlugin
 
@@ -37,6 +38,7 @@ class Plugin(ABC):
             "static": StaticPlugin,
             "playlist": PlaylistPlugin,
             "weather": WeatherPlugin,
+            "weather_ensemble": WeatherEnsemblePlugin,
             "earthquakes": EarthquakePlugin,
             "gallery": GalleryPlugin,
         }

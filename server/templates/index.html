@@ -172,11 +172,12 @@
           <label style="flex:1; min-width:160px">
             <span>Plugin</span>
             <select name="plugin_type" onchange="switchPlugin(this)">
-              <option value="static"      {% if ptype=='static'      %}selected{% endif %}>Static image</option>
-              <option value="gallery"     {% if ptype=='gallery'     %}selected{% endif %}>Gallery slideshow</option>
-              <option value="playlist"    {% if ptype=='playlist'    %}selected{% endif %}>Playlist</option>
-              <option value="weather"     {% if ptype=='weather'     %}selected{% endif %}>Weather forecast</option>
-              <option value="earthquakes" {% if ptype=='earthquakes' %}selected{% endif %}>CA earthquake sequence</option>
+              <option value="static"           {% if ptype=='static'           %}selected{% endif %}>Static image</option>
+              <option value="gallery"          {% if ptype=='gallery'          %}selected{% endif %}>Gallery slideshow</option>
+              <option value="playlist"         {% if ptype=='playlist'         %}selected{% endif %}>Playlist</option>
+              <option value="weather"          {% if ptype=='weather'          %}selected{% endif %}>Weather forecast</option>
+              <option value="weather_ensemble" {% if ptype=='weather_ensemble' %}selected{% endif %}>Ensemble weather forecast</option>
+              <option value="earthquakes"      {% if ptype=='earthquakes'      %}selected{% endif %}>CA earthquake sequence</option>
             </select>
           </label>
         </div>
@@ -307,6 +308,40 @@
               <select name="weather_unit">
                 <option value="fahrenheit" {% if p.get('temperature_unit','fahrenheit')=='fahrenheit' %}selected{% endif %}>Fahrenheit</option>
                 <option value="celsius"    {% if p.get('temperature_unit','fahrenheit')=='celsius'    %}selected{% endif %}>Celsius</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <!-- ENSEMBLE WEATHER -->
+        <div class="plugin-fields {% if ptype=='weather_ensemble' %}active{% endif %}" data-plugin="weather_ensemble">
+          <div class="row">
+            <label style="width:110px"><span>Latitude</span><input type="number" step="any" name="ens_lat" value="{{ p.get('lat','') }}"></label>
+            <label style="width:110px"><span>Longitude</span><input type="number" step="any" name="ens_lon" value="{{ p.get('lon','') }}"></label>
+            <label style="flex:1"><span>Location name</span><input type="text" name="ens_location" value="{{ p.get('location_name','') | e }}"></label>
+          </div>
+          <div class="row">
+            <label style="width:120px"><span>Days (1–10)</span><input type="number" name="ens_days" value="{{ p.get('days', 7) }}" min="1" max="10"></label>
+            <label style="flex:1"><span>Temperature unit</span>
+              <select name="ens_unit">
+                <option value="fahrenheit" {% if p.get('temperature_unit','fahrenheit')=='fahrenheit' %}selected{% endif %}>Fahrenheit</option>
+                <option value="celsius"    {% if p.get('temperature_unit','fahrenheit')=='celsius'    %}selected{% endif %}>Celsius</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label style="flex:1"><span>Model</span>
+              <select name="ens_model">
+                <option value="ecmwf_ifs025" {% if p.get('model','ecmwf_ifs025')=='ecmwf_ifs025' %}selected{% endif %}>ECMWF IFS (recommended)</option>
+                <option value="gfs_seamless"  {% if p.get('model','ecmwf_ifs025')=='gfs_seamless'  %}selected{% endif %}>GFS</option>
+                <option value="icon_seamless" {% if p.get('model','ecmwf_ifs025')=='icon_seamless' %}selected{% endif %}>ICON</option>
+              </select>
+            </label>
+            <label style="flex:1"><span>Yellow panel</span>
+              <select name="ens_yellow">
+                <option value="wind_gusts_10m"  {% if p.get('yellow_variable','wind_gusts_10m')=='wind_gusts_10m'  %}selected{% endif %}>Wind gusts</option>
+                <option value="cloud_cover"     {% if p.get('yellow_variable','wind_gusts_10m')=='cloud_cover'     %}selected{% endif %}>Cloud cover</option>
+                <option value="surface_pressure"{% if p.get('yellow_variable','wind_gusts_10m')=='surface_pressure'%}selected{% endif %}>Surface pressure</option>
               </select>
             </label>
           </div>
@@ -465,8 +500,7 @@ function plCollect(card) {
 }
 
 // --- save frame ---
-async function saveFrame(e, mac, form) {
-  e.preventDefault();
+function collectFramePayload(form) {
   const d = new FormData(form);
   const type = d.get('plugin_type');
   let plugin = { type };
@@ -480,6 +514,14 @@ async function saveFrame(e, mac, form) {
     plugin.location_name    = d.get('weather_location');
     plugin.forecast_hours   = parseInt(d.get('weather_hours'));
     plugin.temperature_unit = d.get('weather_unit');
+  } else if (type === 'weather_ensemble') {
+    plugin.lat              = parseFloat(d.get('ens_lat'));
+    plugin.lon              = parseFloat(d.get('ens_lon'));
+    plugin.location_name    = d.get('ens_location');
+    plugin.days             = parseInt(d.get('ens_days'));
+    plugin.temperature_unit = d.get('ens_unit');
+    plugin.model            = d.get('ens_model');
+    plugin.yellow_variable  = d.get('ens_yellow');
   } else if (type === 'earthquakes') {
     plugin.days             = parseInt(d.get('eq_days'));
     plugin.regional_min_mag = parseFloat(d.get('eq_regional_min_mag'));
@@ -490,11 +532,16 @@ async function saveFrame(e, mac, form) {
     plugin.zoom        = d.get('gal_zoom');
     plugin.rotations   = galCollectRotations(form.closest('.card'));
   }
+  return { name: d.get('name'), poll_seconds: parseInt(d.get('poll_seconds')), plugin };
+}
+
+async function saveFrame(e, mac, form) {
+  e.preventDefault();
   try {
     const r = await fetch(`/api/frame/${mac}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name: d.get('name'), poll_seconds: parseInt(d.get('poll_seconds')), plugin }),
+      body: JSON.stringify(collectFramePayload(form)),
     });
     if (!r.ok) throw new Error(await r.text());
     flash('Saved', 'ok');
@@ -511,12 +558,27 @@ async function deleteFrame(mac) {
 }
 
 // --- preview ---
-function togglePreview(btn, mac) {
+async function togglePreview(btn, mac) {
   const cid   = mac.replace(/:/g, '-');
   const panel = document.getElementById(`preview-${cid}`);
   const open  = panel.classList.toggle('open');
   btn.textContent = open ? 'Hide preview' : 'Preview';
   if (!open) return;
+  // Auto-save current form state so the preview always matches what's shown
+  const form = btn.closest('.card').querySelector('form');
+  try {
+    const r = await fetch(`/api/frame/${mac}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(collectFramePayload(form)),
+    });
+    if (!r.ok) throw new Error(await r.text());
+  } catch(err) {
+    flash(`Save failed: ${err.message}`, 'err');
+    panel.classList.remove('open');
+    btn.textContent = 'Preview';
+    return;
+  }
   const ts = Date.now();
   loadPreviewImg(`spin-a-${cid}`, `/api/frame/${mac}/preview.png?t=${ts}`);
   loadPreviewImg(`spin-b-${cid}`, `/api/frame/${mac}/preview-dithered.png?t=${ts}`);

@@ -162,7 +162,7 @@ async def api_update_frame(mac: str, request: Request) -> JSONResponse:
     if "plugin" in body:
         # Validate plugin type exists
         plugin_type = body["plugin"].get("type", "static")
-        allowed = {"static", "playlist", "weather", "earthquakes", "gallery"}
+        allowed = {"static", "playlist", "weather", "weather_ensemble", "earthquakes", "gallery"}
         if plugin_type not in allowed:
             raise HTTPException(status_code=400, detail=f"Unknown plugin type: {plugin_type!r}")
         frame["plugin"] = body["plugin"]
@@ -282,6 +282,19 @@ async def api_list_plugins() -> JSONResponse:
                     {"name": "lon",           "label": "Longitude",     "type": "number"},
                     {"name": "location_name", "label": "Location name", "type": "text"},
                     {"name": "days",          "label": "Days (1-7)",    "type": "number"},
+                ],
+            },
+            {
+                "type": "weather_ensemble",
+                "label": "Ensemble weather forecast",
+                "fields": [
+                    {"name": "lat",             "label": "Latitude",                                                          "type": "number"},
+                    {"name": "lon",             "label": "Longitude",                                                         "type": "number"},
+                    {"name": "location_name",   "label": "Location name",                                                     "type": "text"},
+                    {"name": "days",            "label": "Days (1-10)",                                                       "type": "number"},
+                    {"name": "temperature_unit","label": "Temperature unit (fahrenheit / celsius)",                           "type": "text"},
+                    {"name": "model",           "label": "Model (ecmwf_ifs025 / gfs_seamless / icon_seamless)",               "type": "text"},
+                    {"name": "yellow_variable", "label": "Yellow panel (wind_gusts_10m / cloud_cover / surface_pressure)",    "type": "text"},
                 ],
             },
             {
