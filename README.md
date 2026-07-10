@@ -101,6 +101,40 @@ python dither.py encode photo.png   # produces photo.epd (960 000 bytes)
 python dither.py decode photo.epd   # produces photo_preview.png for visual verification
 ```
 
+### Running with Docker Compose
+
+`server/Dockerfile` builds an image that serves both the FastAPI app (default `CMD`) and the Telegram bot (`telegram_bot.py`), selected via the `command:` override. Neither reads a config-path env var — `config.json`, `uploads/`, and `telegram-gallery/` are always resolved relative to `server/` inside the container, so those three paths must be bind-mounted at exactly `/app/config.json`, `/app/uploads`, and `/app/telegram-gallery` to persist across restarts and rebuilds.
+
+To fold this into an existing `docker-compose.yml`:
+
+```yaml
+services:
+  esp-frame:
+    build: ./esp-frame/server        # path to this repo's server/ dir
+    image: esp-frame-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./esp-frame/data/config.json:/app/config.json
+      - ./esp-frame/data/uploads:/app/uploads
+
+  esp-frame-telegram-bot:
+    image: esp-frame-server           # reuse the same built image
+    restart: unless-stopped
+    command: ["python", "telegram_bot.py"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID}
+      TELEGRAM_GALLERY_DIR: /app/telegram-gallery
+    volumes:
+      - ./esp-frame/data/telegram-gallery:/app/telegram-gallery
+    depends_on:
+      - esp-frame
+```
+
+Set `TELEGRAM_BOT_TOKEN` (and optionally `TELEGRAM_ALLOWED_CHAT_ID`) in the `.env` file next to your compose file — Compose loads it automatically for `${...}` substitution. `config.json` is a *file* bind-mount, not a directory, so create an empty `config.json` (e.g. `{}`) on the host before the first `up`, or Docker will create a directory there instead.
+
 ---
 
 ## First-time Frame Setup
