@@ -18,8 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# uploads/ and config.json live on a mounted volume so they survive restarts
-VOLUME ["/app/uploads", "/app/config.json"]
+# uploads/ lives on a mounted volume so it survives restarts.
+# config.json is bind-mounted as a single file from the host (see compose),
+# so it must NOT be a VOLUME — a VOLUME path is created as a directory, which
+# breaks bind-mounting a file onto it.
+VOLUME ["/app/uploads"]
 
 EXPOSE 8000
 

@@ -103,7 +103,7 @@ python dither.py decode photo.epd   # produces photo_preview.png for visual veri
 
 ### Running with Docker Compose
 
-`server/Dockerfile` builds an image that serves both the FastAPI app (default `CMD`) and the Telegram bot (`telegram_bot.py`), selected via the `command:` override. Neither reads a config-path env var — `config.json`, `uploads/`, and `telegram-gallery/` are always resolved relative to `server/` inside the container, so those three paths must be bind-mounted at exactly `/app/config.json`, `/app/uploads`, and `/app/telegram-gallery` to persist across restarts and rebuilds.
+`server/Dockerfile` builds an image that serves both the FastAPI app (default `CMD`) and the Telegram bot (`telegram_bot.py`), selected via the `command:` override. Neither reads a config-path env var — the FastAPI app resolves `config.json` and `uploads/` relative to `server/` inside the container (`/app/config.json`, `/app/uploads`), and the bot writes to a fixed `/app/gallery`. Bind-mount those paths at exactly `/app/config.json`, `/app/uploads`, and `/app/gallery` to persist data across restarts and rebuilds.
 
 To fold this into an existing `docker-compose.yml`:
 
@@ -126,9 +126,8 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID}
-      TELEGRAM_GALLERY_DIR: /app/telegram-gallery
     volumes:
-      - ./esp-frame/data/telegram-gallery:/app/telegram-gallery
+      - ./esp-frame/data/gallery:/app/gallery
     depends_on:
       - esp-frame
 ```

@@ -1,13 +1,14 @@
 """
-Telegram bot — receives photos and saves them to TELEGRAM_GALLERY_DIR.
+Telegram bot — receives photos and saves them to the gallery at /app/gallery.
 
 Reacts with 👍 on success. Run alongside the FastAPI server:
 
     TELEGRAM_BOT_TOKEN=<token> python telegram_bot.py
 
+The gallery directory is fixed at /app/gallery; mount your host gallery there.
+
 Environment variables:
     TELEGRAM_BOT_TOKEN       (required) token from @BotFather
-    TELEGRAM_GALLERY_DIR     directory to save images (default: ./telegram-gallery)
     TELEGRAM_ALLOWED_CHAT_ID if set, only accept messages from this chat ID
 """
 
@@ -23,8 +24,7 @@ from telegram.constants import ReactionEmoji
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 BOT_TOKEN    = os.environ["TELEGRAM_BOT_TOKEN"].strip()
-GALLERY_DIR  = Path((os.environ.get("TELEGRAM_GALLERY_DIR") or "").strip()
-                    or str(Path(__file__).parent / "telegram-gallery"))
+GALLERY_DIR  = Path("/app/gallery")
 ALLOWED_CHAT = (os.environ.get("TELEGRAM_ALLOWED_CHAT_ID") or "").strip() or None
 
 logging.basicConfig(
