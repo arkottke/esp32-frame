@@ -172,12 +172,12 @@
           <label style="flex:1; min-width:160px">
             <span>Plugin</span>
             <select name="plugin_type" onchange="switchPlugin(this)">
-              <option value="static"           {% if ptype=='static'           %}selected{% endif %}>Static image</option>
+              <option value="earthquakes"      {% if ptype=='earthquakes'      %}selected{% endif %}>CA earthquake sequence</option>
+              <option value="weather_ensemble" {% if ptype=='weather_ensemble' %}selected{% endif %}>Ensemble weather forecast</option>
               <option value="gallery"          {% if ptype=='gallery'          %}selected{% endif %}>Gallery slideshow</option>
               <option value="playlist"         {% if ptype=='playlist'         %}selected{% endif %}>Playlist</option>
+              <option value="static"           {% if ptype=='static'           %}selected{% endif %}>Static image</option>
               <option value="weather"          {% if ptype=='weather'          %}selected{% endif %}>Weather forecast</option>
-              <option value="weather_ensemble" {% if ptype=='weather_ensemble' %}selected{% endif %}>Ensemble weather forecast</option>
-              <option value="earthquakes"      {% if ptype=='earthquakes'      %}selected{% endif %}>CA earthquake sequence</option>
             </select>
           </label>
         </div>
@@ -237,17 +237,32 @@
                 <label style="flex:1">
                   <span>Type</span>
                   <select name="new_item_type" onchange="switchAddForm(this)">
+                    <option value="earthquakes">CA earthquake sequence</option>
+                    <option value="weather_ensemble">Ensemble weather forecast</option>
+                    <option value="gallery">Gallery slideshow</option>
                     <option value="static">Static image</option>
                     <option value="weather">Weather forecast</option>
-                    <option value="earthquakes">CA earthquake sequence</option>
                   </select>
                 </label>
               </div>
-              <div class="plugin-fields active" data-addplugin="static">
+              <div class="plugin-fields" data-addplugin="static">
                 <label><span>Image file</span>
                   <select name="new_static_filename">
                     <option value="">— blank white —</option>
                     {% for f in uploads %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+                  </select>
+                </label>
+              </div>
+              <div class="plugin-fields" data-addplugin="gallery">
+                <label><span>Directories (one absolute path per line)</span>
+                  <textarea name="new_gal_directories" rows="4"></textarea>
+                </label>
+                <label style="width:200px"><span>Zoom</span>
+                  <select name="new_gal_zoom">
+                    <option value="fill">Fill (crop to fit)</option>
+                    <option value="fit">Fit (letterbox)</option>
+                    <option value="stretch">Stretch</option>
+                    <option value="center">Center (no scale)</option>
                   </select>
                 </label>
               </div>
@@ -267,7 +282,39 @@
                   </label>
                 </div>
               </div>
-              <div class="plugin-fields" data-addplugin="earthquakes">
+              <div class="plugin-fields" data-addplugin="weather_ensemble">
+                <div class="row">
+                  <label style="width:110px"><span>Latitude</span><input type="number" step="any" name="new_ens_lat" value="0"></label>
+                  <label style="width:110px"><span>Longitude</span><input type="number" step="any" name="new_ens_lon" value="0"></label>
+                  <label style="flex:1"><span>Location</span><input type="text" name="new_ens_location" value=""></label>
+                </div>
+                <div class="row">
+                  <label style="width:120px"><span>Days (1–10)</span><input type="number" name="new_ens_days" value="7" min="1" max="10"></label>
+                  <label style="flex:1"><span>Unit</span>
+                    <select name="new_ens_unit">
+                      <option value="fahrenheit">Fahrenheit</option>
+                      <option value="celsius">Celsius</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="row">
+                  <label style="flex:1"><span>Model</span>
+                    <select name="new_ens_model">
+                      <option value="ecmwf_ifs025">ECMWF IFS (recommended)</option>
+                      <option value="gfs_seamless">GFS</option>
+                      <option value="icon_seamless">ICON</option>
+                    </select>
+                  </label>
+                  <label style="flex:1"><span>Yellow panel</span>
+                    <select name="new_ens_yellow">
+                      <option value="wind_gusts_10m">Wind gusts</option>
+                      <option value="cloud_cover">Cloud cover</option>
+                      <option value="surface_pressure">Surface pressure</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="plugin-fields active" data-addplugin="earthquakes">
                 <div class="row">
                   <label style="width:130px"><span>Trailing window (days)</span><input type="number" name="new_eq_days" value="60"></label>
                   <label style="width:140px"><span>Regional min magnitude</span><input type="number" step="0.1" name="new_eq_regional_min_mag" value="3.0"></label>
@@ -451,9 +498,11 @@ function toggleAddForm(btn) {
   btn.nextElementSibling.classList.toggle('open');
 }
 function plLabel(item) {
-  if (item.type === 'static')      return item.filename || '(blank white)';
-  if (item.type === 'weather')     return item.location_name || `${item.lat ?? 0}, ${item.lon ?? 0}`;
-  if (item.type === 'earthquakes') return `${item.days ?? 60}d / regional M≥${item.regional_min_mag ?? 3.0}`;
+  if (item.type === 'static')           return item.filename || '(blank white)';
+  if (item.type === 'gallery')          return (item.directories || []).join(', ') || '(no directories)';
+  if (item.type === 'weather')          return item.location_name || `${item.lat ?? 0}, ${item.lon ?? 0}`;
+  if (item.type === 'weather_ensemble') return item.location_name || `${item.lat ?? 0}, ${item.lon ?? 0}`;
+  if (item.type === 'earthquakes')      return `${item.days ?? 60}d / regional M≥${item.regional_min_mag ?? 3.0}`;
   return item.type;
 }
 function plMakeRow(item) {
@@ -473,12 +522,23 @@ function plAddItem(btn) {
   let item = { type };
   if (type === 'static') {
     item.filename = form.querySelector('[name=new_static_filename]').value;
+  } else if (type === 'gallery') {
+    item.directories = form.querySelector('[name=new_gal_directories]').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+    item.zoom        = form.querySelector('[name=new_gal_zoom]').value;
   } else if (type === 'weather') {
     item.lat              = parseFloat(form.querySelector('[name=new_weather_lat]').value);
     item.lon              = parseFloat(form.querySelector('[name=new_weather_lon]').value);
     item.location_name    = form.querySelector('[name=new_weather_location]').value;
     item.forecast_hours   = parseInt(form.querySelector('[name=new_weather_hours]').value);
     item.temperature_unit = form.querySelector('[name=new_weather_unit]').value;
+  } else if (type === 'weather_ensemble') {
+    item.lat              = parseFloat(form.querySelector('[name=new_ens_lat]').value);
+    item.lon              = parseFloat(form.querySelector('[name=new_ens_lon]').value);
+    item.location_name    = form.querySelector('[name=new_ens_location]').value;
+    item.days             = parseInt(form.querySelector('[name=new_ens_days]').value);
+    item.temperature_unit = form.querySelector('[name=new_ens_unit]').value;
+    item.model            = form.querySelector('[name=new_ens_model]').value;
+    item.yellow_variable  = form.querySelector('[name=new_ens_yellow]').value;
   } else if (type === 'earthquakes') {
     item.days             = parseInt(form.querySelector('[name=new_eq_days]').value);
     item.regional_min_mag = parseFloat(form.querySelector('[name=new_eq_regional_min_mag]').value);

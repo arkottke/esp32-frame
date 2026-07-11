@@ -60,9 +60,11 @@ def _fmt_local(iso_str: str | None) -> str:
 
 def _pl_label(item: dict) -> str:
     t = item.get("type", "")
-    if t == "static":      return item.get("filename") or "(blank white)"
-    if t == "weather":     return item.get("location_name") or f"{item.get('lat',0)}, {item.get('lon',0)}"
-    if t == "earthquakes": return f"{item.get('days',60)}d / regional M≥{item.get('regional_min_mag',3.0)}"
+    if t == "static":           return item.get("filename") or "(blank white)"
+    if t == "gallery":          return ", ".join(item.get("directories", [])) or "(no directories)"
+    if t == "weather":          return item.get("location_name") or f"{item.get('lat',0)}, {item.get('lon',0)}"
+    if t == "weather_ensemble": return item.get("location_name") or f"{item.get('lat',0)}, {item.get('lon',0)}"
+    if t == "earthquakes":      return f"{item.get('days',60)}d / regional M≥{item.get('regional_min_mag',3.0)}"
     return t
 
 templates.env.globals["_pl_label"] = _pl_label
