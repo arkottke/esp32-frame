@@ -157,7 +157,7 @@
         <input type="text" name="name" value="{{ frame.name | e }}" placeholder="Nickname" maxlength="64">
         <span class="mac {% if frame.name != mac %}nickname-set{% endif %}">{{ mac }}</span>
         {% if frame.last_seen %}
-          <span class="badge online" title="{{ frame.last_seen }}">{{ frame.last_seen[:16] | replace("T"," ") }}</span>
+          <span class="badge online" title="Last queried {{ _fmt_local(frame.last_seen) }} ({{ _tz_name }})">{{ _fmt_local(frame.last_seen) }}</span>
         {% else %}
           <span class="badge">Never seen</span>
         {% endif %}

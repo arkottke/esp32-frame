@@ -13,6 +13,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingResponse
@@ -23,7 +24,9 @@ from dither import image_to_epd, epd_to_image
 from plugins.base import Plugin
 
 BASE_DIR   = Path(__file__).parent
-CONFIG_PATH = BASE_DIR / "config.json"
+# CONFIG_PATH lives inside a bind-mounted *directory* (not a single-file mount),
+# so the atomic tmp->config rename in _save_config() works. Overridable via env.
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", BASE_DIR / "config" / "config.json"))
 UPLOADS_DIR = BASE_DIR / "uploads"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
@@ -31,6 +34,29 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="ESP-Frame Server")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Display timezone for the web UI. `last_seen` is stored in UTC; the frontend
+# renders it in this zone (set via the TZ env var, e.g. TZ=America/Los_Angeles).
+_TZ_NAME = os.environ.get("TZ", "UTC")
+try:
+    LOCAL_TZ = ZoneInfo(_TZ_NAME)
+except (ZoneInfoNotFoundError, ValueError):
+    LOCAL_TZ = timezone.utc
+    _TZ_NAME = "UTC"
+
+
+def _fmt_local(iso_str: str | None) -> str:
+    """Format a stored UTC ISO timestamp as 'YYYY-MM-DD HH:MM' in LOCAL_TZ."""
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+    except ValueError:
+        return iso_str
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M")
+
 
 def _pl_label(item: dict) -> str:
     t = item.get("type", "")
@@ -40,6 +66,8 @@ def _pl_label(item: dict) -> str:
     return t
 
 templates.env.globals["_pl_label"] = _pl_label
+templates.env.globals["_fmt_local"] = _fmt_local
+templates.env.globals["_tz_name"] = _TZ_NAME
 
 
 # ---------------------------------------------------------------------------
