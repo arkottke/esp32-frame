@@ -173,6 +173,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /* EPD hardware init */
+    gpio_hold_dis(LOAD_SW);   /* release any hold left over from the prior deep sleep */
     initialGpio();
     initialSpi();
     setGpioLevel(LOAD_SW, GPIO_HIGH);
@@ -196,6 +197,9 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi connect failed, sleeping %lu s before retry",
                  (unsigned long)cfg.poll_seconds);
+        setGpioLevel(LOAD_SW, GPIO_LOW);
+        gpio_hold_en(LOAD_SW);
+        gpio_deep_sleep_hold_en();
         esp_deep_sleep((uint64_t)cfg.poll_seconds * 1000000ULL);
     }
 
@@ -233,6 +237,15 @@ void app_main(void)
         ESP_LOGW(TAG, "Image fetch failed (%s), keeping current display",
                  esp_err_to_name(err));
     }
+
+    /* Power down the EPD panel rail before sleeping — otherwise its boost/driver
+       circuitry stays energized for the whole poll interval and drains the battery.
+       gpio_hold_en + gpio_deep_sleep_hold_en latch the level through deep sleep,
+       since GPIO45 isn't in the RTC domain and would otherwise float once the
+       digital domain powers down. */
+    setGpioLevel(LOAD_SW, GPIO_LOW);
+    gpio_hold_en(LOAD_SW);
+    gpio_deep_sleep_hold_en();
 
     /* Sleep until next poll; SW2 can also wake early for a manual refresh */
     esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
