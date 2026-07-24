@@ -28,6 +28,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
+from matplotlib.offsetbox import TextArea, HPacker, AnnotationBbox
 import numpy as np
 from PIL import Image
 
@@ -211,12 +212,16 @@ class WeatherPlugin(Plugin):
             title += f"  ·  {date_range}"
         fig.suptitle(title, fontsize=18, fontweight="bold", y=0.975)
 
-        # ---- panel labels (right side) ------------------------------
-        for ax, label in zip(axes, ["Temperature", "Wind",
-                                     "RH / PoP / Sky", "Precipitation"]):
-            ax.text(1.0, 1.0, label, transform=ax.transAxes,
-                    fontsize=13, ha="right", va="top",
-                    color=C_BLACK, style="italic")
+        # ---- panel labels (right side) — each series colored to match its line
+        _sep = (" / ", C_BLACK)
+        panel_label_segments = [
+            [("Temp", C_RED), _sep, ("Dew Point", C_BLUE)],
+            [("Wind", C_GREEN), _sep, ("Gust", C_RED)],
+            [("RH", C_RED), _sep, ("PoP", C_BLUE), _sep, ("Sky", C_BLACK)],
+            [("Precipitation", C_BLUE)],
+        ]
+        for ax, segments in zip(axes, panel_label_segments):
+            _draw_colored_label(ax, segments)
 
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=100, facecolor="white")
@@ -249,6 +254,24 @@ class WeatherPlugin(Plugin):
 
 def _as_floats(lst: list) -> list[float]:
     return [float(v) if v is not None else float("nan") for v in lst]
+
+
+def _draw_colored_label(ax, segments: list[tuple[str, str]], fontsize: int = 13) -> None:
+    """Top-right panel label whose segments are each colored to match their series.
+
+    `segments` is a list of (text, color) pairs laid out horizontally, e.g.
+    [("Wind", C_GREEN), (" / ", C_BLACK), ("Gust", C_RED)].
+    """
+    boxes = [
+        TextArea(text, textprops=dict(color=color, fontsize=fontsize,
+                                      fontstyle="italic"))
+        for text, color in segments
+    ]
+    packed = HPacker(children=boxes, align="baseline", pad=0, sep=0)
+    ab = AnnotationBbox(packed, (1.0, 1.0), xycoords="axes fraction",
+                        box_alignment=(1.0, 1.0), frameon=False, pad=0.0)
+    ab.set_zorder(5)
+    ax.add_artist(ab)
 
 
 
