@@ -19,9 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # uploads/ lives on a mounted volume so it survives restarts.
-# config.json is bind-mounted as a single file from the host (see compose),
-# so it must NOT be a VOLUME — a VOLUME path is created as a directory, which
-# breaks bind-mounting a file onto it.
+# /app/config is a bind-mounted directory (see compose) holding config.json.
+# Mounting the directory (not the single file) lets _save_config() do its
+# atomic tmp->config.json rename, which fails with EBUSY across a file mount.
 VOLUME ["/app/uploads"]
 
 EXPOSE 8000
