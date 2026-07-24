@@ -220,9 +220,11 @@
         <div class="plugin-fields {% if ptype=='playlist' %}active{% endif %}" data-plugin="playlist">
           <div class="playlist-list" id="pl-{{ cid }}">
             {% for item in p.get('items', []) %}
-            <div class="pl-item" data-item="{{ item | tojson | e }}">
+            <div class="pl-item" data-item='{{ item | tojson }}'>
               <span class="pl-item-type">{{ item.get('type','?') }}</span>
               <span class="pl-item-label">{{ _pl_label(item) }}</span>
+              <button type="button" class="btn btn-icon btn-sm" title="Preview" onclick="plPreviewItem(this)">👁</button>
+              <button type="button" class="btn btn-icon btn-sm" title="Edit"   onclick="plEdit(this)">✎</button>
               <button type="button" class="btn btn-icon btn-sm" title="Up"     onclick="plMove(this,-1)">↑</button>
               <button type="button" class="btn btn-icon btn-sm" title="Down"   onclick="plMove(this,1)">↓</button>
               <button type="button" class="btn btn-icon btn-sm btn-danger" onclick="plRemove(this)">✕</button>
@@ -335,8 +337,8 @@
                 </div>
               </div>
               <div class="row">
-                <button type="button" class="btn btn-primary btn-sm" onclick="plAddItem(this)">Add</button>
-                <button type="button" class="btn btn-sm" onclick="this.closest('.pl-add-form').classList.remove('open')">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm pl-commit-btn" onclick="plAddItem(this)">Add</button>
+                <button type="button" class="btn btn-sm" onclick="plResetForm(this.closest('.pl-add-form')); this.closest('.pl-add-form').classList.remove('open')">Cancel</button>
               </div>
             </div>
           </div>
@@ -495,7 +497,9 @@ function switchAddForm(sel) {
 
 // --- playlist editor ---
 function toggleAddForm(btn) {
-  btn.nextElementSibling.classList.toggle('open');
+  const form = btn.nextElementSibling;
+  const opened = form.classList.toggle('open');
+  if (opened) plResetForm(form);  // "+ Add item" always opens in fresh add mode
 }
 function plLabel(item) {
   if (item.type === 'static')           return item.filename || '(blank white)';
@@ -511,13 +515,15 @@ function plMakeRow(item) {
   d.dataset.item = JSON.stringify(item);
   d.innerHTML = `<span class="pl-item-type">${item.type}</span>`
     + `<span class="pl-item-label">${plLabel(item)}</span>`
+    + `<button type="button" class="btn btn-icon btn-sm" title="Preview" onclick="plPreviewItem(this)">👁</button>`
+    + `<button type="button" class="btn btn-icon btn-sm" title="Edit" onclick="plEdit(this)">✎</button>`
     + `<button type="button" class="btn btn-icon btn-sm" onclick="plMove(this,-1)">↑</button>`
     + `<button type="button" class="btn btn-icon btn-sm" onclick="plMove(this,1)">↓</button>`
     + `<button type="button" class="btn btn-icon btn-sm btn-danger" onclick="plRemove(this)">✕</button>`;
   return d;
 }
-function plAddItem(btn) {
-  const form = btn.closest('.pl-add-form');
+// Read the add/edit form inputs for the currently-selected type into an item object.
+function plReadFormFields(form) {
   const type = form.querySelector('[name=new_item_type]').value;
   let item = { type };
   if (type === 'static') {
@@ -545,8 +551,79 @@ function plAddItem(btn) {
     item.local_min_mag    = parseFloat(form.querySelector('[name=new_eq_local_min_mag]').value);
     item.provider         = form.querySelector('[name=new_eq_provider]').value;
   }
-  const list = form.closest('.plugin-fields[data-plugin=playlist]').querySelector('.playlist-list');
-  list.appendChild(plMakeRow(item));
+  return item;
+}
+
+// Populate the add/edit form inputs from an existing item (inverse of plReadFormFields).
+function plFillFormFields(form, item) {
+  const typeSel = form.querySelector('[name=new_item_type]');
+  typeSel.value = item.type;
+  switchAddForm(typeSel);
+  const set = (name, val) => { const el = form.querySelector(`[name=${name}]`); if (el) el.value = val ?? ''; };
+  if (item.type === 'static') {
+    set('new_static_filename', item.filename || '');
+  } else if (item.type === 'gallery') {
+    set('new_gal_directories', (item.directories || []).join('\n'));
+    set('new_gal_zoom', item.zoom || 'fill');
+  } else if (item.type === 'weather') {
+    set('new_weather_lat', item.lat);
+    set('new_weather_lon', item.lon);
+    set('new_weather_location', item.location_name);
+    set('new_weather_hours', item.forecast_hours ?? 48);
+    set('new_weather_unit', item.temperature_unit || 'fahrenheit');
+  } else if (item.type === 'weather_ensemble') {
+    set('new_ens_lat', item.lat);
+    set('new_ens_lon', item.lon);
+    set('new_ens_location', item.location_name);
+    set('new_ens_days', item.days ?? 7);
+    set('new_ens_unit', item.temperature_unit || 'fahrenheit');
+    set('new_ens_model', item.model || 'ecmwf_ifs025');
+    set('new_ens_yellow', item.yellow_variable || 'wind_gusts_10m');
+  } else if (item.type === 'earthquakes') {
+    set('new_eq_days', item.days ?? 60);
+    set('new_eq_regional_min_mag', item.regional_min_mag ?? 3.0);
+    set('new_eq_local_min_mag', item.local_min_mag ?? 1.0);
+    set('new_eq_provider', item.provider || 'usgs-topo');
+  }
+}
+
+// Reset the shared form back to "add" mode (enabled type select, "Add" button, no edit row).
+function plResetForm(form) {
+  delete form.dataset.editing;
+  form._editRow = null;
+  form.querySelector('[name=new_item_type]').disabled = false;
+  const commit = form.querySelector('.pl-commit-btn');
+  if (commit) commit.textContent = 'Add';
+}
+
+// Open the shared form pre-filled with an existing item's values, in edit mode.
+function plEdit(btn) {
+  const row  = btn.closest('.pl-item');
+  const item = JSON.parse(row.dataset.item);
+  const form = row.closest('.plugin-fields[data-plugin=playlist]').querySelector('.pl-add-form');
+  plFillFormFields(form, item);
+  form._editRow = row;
+  form.dataset.editing = '1';
+  form.querySelector('[name=new_item_type]').disabled = true;  // lock type during edit
+  const commit = form.querySelector('.pl-commit-btn');
+  if (commit) commit.textContent = 'Update';
+  form.classList.add('open');
+}
+
+// Commit the form: update the edited row in place, or append a new row.
+function plAddItem(btn) {
+  const form = btn.closest('.pl-add-form');
+  const item = plReadFormFields(form);
+  if (form.dataset.editing && form._editRow) {
+    const row = form._editRow;
+    row.dataset.item = JSON.stringify(item);
+    row.querySelector('.pl-item-type').textContent  = item.type;
+    row.querySelector('.pl-item-label').textContent = plLabel(item);
+  } else {
+    const list = form.closest('.plugin-fields[data-plugin=playlist]').querySelector('.playlist-list');
+    list.appendChild(plMakeRow(item));
+  }
+  plResetForm(form);
   form.classList.remove('open');
 }
 function plRemove(btn) { btn.closest('.pl-item').remove(); }
@@ -654,6 +731,43 @@ function loadPreviewImg(spinnerId, url) {
   img.onload  = () => { spin.style.display = 'none'; spin.insertAdjacentElement('afterend', img); };
   img.onerror = () => { spin.textContent = 'Failed to load'; };
   img.src = url;
+}
+
+// --- per-item playlist preview (renders just that item into the card's preview panel) ---
+async function plPreviewItem(btn) {
+  const item  = JSON.parse(btn.closest('.pl-item').dataset.item);
+  const card  = btn.closest('.card');
+  const panel = card.querySelector('.preview-panel');
+  panel.classList.add('open');
+  // keep the whole-frame Preview button label in sync now that the panel is open
+  const prevBtn = card.querySelector('.card-footer button[onclick^="togglePreview"]');
+  if (prevBtn) prevBtn.textContent = 'Hide preview';
+  const spins = panel.querySelectorAll('.preview-spinner');
+  loadPreviewImgFromBlob(spins[0], '/api/preview.png', item);
+  loadPreviewImgFromBlob(spins[1], '/api/preview-dithered.png', item);
+}
+function loadPreviewImgFromBlob(spin, url, item) {
+  spin.textContent = 'Loading…';
+  spin.style.display = 'flex';
+  const prev = spin.nextElementSibling;
+  if (prev?.tagName === 'IMG') prev.remove();
+  fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(item),
+  })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+    .then(blob => {
+      const img = new Image();
+      img.className = 'preview-img';
+      img.onload = () => {
+        spin.style.display = 'none';
+        spin.insertAdjacentElement('afterend', img);
+        URL.revokeObjectURL(img.src);
+      };
+      img.src = URL.createObjectURL(blob);
+    })
+    .catch(() => { spin.textContent = 'Failed to load'; });
 }
 
 // --- uploads ---

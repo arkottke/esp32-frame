@@ -270,6 +270,49 @@ async def api_frame_preview_dithered(mac: str) -> StreamingResponse:
     return StreamingResponse(buf, media_type="image/png")
 
 
+def _render_plugin_config(cfg: dict) -> "Image.Image":
+    """Render an arbitrary plugin config to a PIL image (for ad-hoc previews).
+
+    Used by the per-item playlist preview: the UI posts a single item's config
+    and gets back its rendered image without having to save it to any frame.
+    """
+    from PIL import Image, ImageDraw
+    try:
+        plugin = Plugin.from_config(cfg)
+        return plugin.render()
+    except Exception as exc:
+        img = Image.new("RGB", (1200, 1600), (255, 245, 245))
+        draw = ImageDraw.Draw(img)
+        draw.text((60, 60), f"Render error:\n{exc}", fill=(180, 0, 0))
+        return img
+
+
+@app.post("/api/preview.png")
+async def api_preview_png(request: Request) -> StreamingResponse:
+    """Render an arbitrary plugin config (e.g. a single playlist item) as PNG."""
+    import io
+    cfg = await request.json()
+    img = _render_plugin_config(cfg)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+
+@app.post("/api/preview-dithered.png")
+async def api_preview_dithered_png(request: Request) -> StreamingResponse:
+    """Render an arbitrary plugin config, dither to EPD palette, decode back to PNG."""
+    import io
+    cfg = await request.json()
+    img = _render_plugin_config(cfg)
+    epd_bytes = image_to_epd(img)
+    dithered = epd_to_image(epd_bytes)
+    buf = io.BytesIO()
+    dithered.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+
 @app.delete("/api/upload/{filename}")
 async def api_delete_upload(filename: str) -> JSONResponse:
     safe = (UPLOADS_DIR / Path(filename).name).resolve()
