@@ -133,12 +133,6 @@ class WeatherPlugin(Plugin):
         ax_temp.set_ylabel(_TEMP_UNIT_LABEL.get(self.temp_unit, "°F"), fontsize=14)
         ax_temp.yaxis.set_label_coords(-0.07, 0.5)
         _style_ax(ax_temp)
-        if temp:
-            ax_temp.annotate(
-                f"{temp[0]:.0f}{_TEMP_UNIT_LABEL.get(self.temp_unit, '°')}",
-                xy=(0, temp[0]), xytext=(6, 0), textcoords="offset points",
-                fontsize=13, color=C_RED, va="center",
-            )
 
         # ---- wind speed + gusts + direction barbs -------------------
         ax_wind.plot(xs, wind, color=C_GREEN, linewidth=3, zorder=3)
