@@ -145,3 +145,21 @@ Set `TELEGRAM_BOT_TOKEN` (and optionally `TELEGRAM_ALLOWED_CHAT_ID`) in the `.en
 5. The frame restarts, joins your network, and begins polling.
 
 To reset a frame back to provisioning mode, hold **SW4 (IO14)** for 5 seconds on boot.
+
+---
+
+## Button Polarity: All Three Are Active-HIGH
+
+Per the board manual, **SW2, SW3, and SW4 are all triggered by a high level**
+(idle LOW, pressed HIGH) — there is no hardware fault on any of them. This
+matters because a past firmware regression assumed SW2 was active-LOW (idle
+HIGH) and armed the deep-sleep wakeup on `ESP_EXT1_WAKEUP_ANY_LOW`. Since SW2's
+real idle state is LOW, that wakeup condition was satisfied the instant the
+chip went to sleep — the frame never actually slept, looping connect/fetch/sleep
+continuously, which (combined with the LOAD_SW rail issue above) is what
+drained the battery in about a week instead of months.
+
+Firmware now configures SW2 with an internal pull-down and wakes on
+`ESP_EXT1_WAKEUP_ANY_HIGH`, matching SW4's existing (and always correct)
+active-HIGH handling. If you add SW3 to firmware in the future, configure it
+the same way.

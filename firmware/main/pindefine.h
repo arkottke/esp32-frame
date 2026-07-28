@@ -18,8 +18,8 @@
 #define EPD_BUSY	7   // Please set it as input pin
 #define EPD_RST		6   // Please set it as output pin
 #define LOAD_SW		45  // Please set it as output pin
-#define SW2		12  // Manual image refresh (active-low, wakes from deep sleep)
-#define SW4		14  // Factory reset button (active-low, internal pullup)
+#define SW2		12  // Manual image refresh (active-HIGH, internal pulldown, wakes from deep sleep)
+#define SW4		14  // Factory reset button (active-HIGH, internal pulldown)
 
 //===============================================
 
@@ -31,6 +31,6 @@
 // divider (e.g. ADC_CHANNEL_0 for GPIO1). Leave as -1 to disable.
 #define BATT_ADC_CHANNEL  -1
 
-#define FW_VERSION  "1.0.0"
+#define FW_VERSION  "1.0.3"
 
 #endif //#ifndef __PINDEFINE_H__

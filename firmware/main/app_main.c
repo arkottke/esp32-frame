@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_sleep.h"
+#include "driver/rtc_io.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -247,8 +248,17 @@ void app_main(void)
     gpio_hold_en(LOAD_SW);
     gpio_deep_sleep_hold_en();
 
-    /* Sleep until next poll; SW2 can also wake early for a manual refresh */
-    esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
+    /* Sleep until next poll; SW2 can also wake early for a manual refresh.
+       Per the board manual, all buttons are active-HIGH, so SW2 idles LOW and
+       needs an internal pull-down (not pull-up) plus ANY_HIGH as the wake edge. */
+    rtc_gpio_pulldown_en(SW2);
+    rtc_gpio_pullup_dis(SW2);
+    gpio_set_direction(SW2, GPIO_MODE_INPUT);
+    if (gpio_get_level(SW2) != 0) {
+        ESP_LOGW(TAG, "SW2 reads HIGH at sleep time — skipping ext1 wakeup this cycle");
+    } else {
+        esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
+    }
     ESP_LOGI(TAG, "Entering deep sleep for %lu s", (unsigned long)cfg.poll_seconds);
     esp_deep_sleep((uint64_t)cfg.poll_seconds * 1000000ULL);
 }
