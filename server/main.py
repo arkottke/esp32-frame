@@ -27,6 +27,11 @@ BASE_DIR   = Path(__file__).parent
 # CONFIG_PATH lives inside a bind-mounted *directory* (not a single-file mount),
 # so the atomic tmp->config rename in _save_config() works. Overridable via env.
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", BASE_DIR / "config" / "config.json"))
+# Power/SoH history lives beside config.json rather than inside it, so an
+# hourly append stream never bloats the file the web UI rewrites on every edit.
+HISTORY_PATH = CONFIG_PATH.parent / "soh_history.json"
+# ~83 days of samples at one poll per hour.
+HISTORY_MAX_SAMPLES = 2000
 UPLOADS_DIR = BASE_DIR / "uploads"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
@@ -92,6 +97,34 @@ def _save_config(config: dict) -> None:
     tmp.replace(CONFIG_PATH)
 
 
+def _load_history() -> dict[str, list]:
+    if not HISTORY_PATH.exists():
+        return {}
+    try:
+        with open(HISTORY_PATH) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        # A truncated history file must never take the image endpoint down.
+        return {}
+
+
+def _save_history(history: dict[str, list]) -> None:
+    tmp = HISTORY_PATH.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        json.dump(history, f)
+        fcntl.flock(f, fcntl.LOCK_UN)
+    tmp.replace(HISTORY_PATH)
+
+
+def _append_history(mac: str, sample: dict) -> None:
+    history = _load_history()
+    samples = history.setdefault(mac, [])
+    samples.append(sample)
+    del samples[:-HISTORY_MAX_SAMPLES]
+    _save_history(history)
+
+
 def _get_or_create_frame(config: dict, mac: str) -> dict[str, Any]:
     """Return the frame entry, auto-creating it on first contact."""
     if mac not in config["frames"]:
@@ -124,18 +157,35 @@ async def get_frame_image(mac: str, request: Request) -> Response:
 
     # Update state-of-health if any SoH params were sent
     q = request.query_params
-    soh_keys = ("rssi", "voltage_mv", "wakeup", "fw_ver", "heap")
+    soh_keys = ("rssi", "voltage_mv", "wakeup", "fw_ver", "heap", "boots")
     if any(k in q for k in soh_keys):
         def _int(key: str):
             try: return int(q[key])
             except (KeyError, ValueError): return None
-        frame["soh"] = {
+        soh = {
             "rssi":       _int("rssi"),
             "voltage_mv": _int("voltage_mv"),
             "wakeup":     q.get("wakeup"),
             "fw_ver":     q.get("fw_ver"),
             "heap":       _int("heap"),
+            # Deep-sleep cycle accounting. slept_ms is the sleep that just
+            # ended; prev_* describe the last cycle that ran to completion.
+            "boots":         _int("boots"),
+            "slept_ms":      _int("slept_ms"),
+            "req_sleep_ms":  _int("req_sleep_ms"),
+            "prev_awake_ms": _int("prev_awake_ms"),
+            "t_wifi":        _int("t_wifi"),
+            "t_fetch":       _int("t_fetch"),
+            "t_disp":        _int("t_disp"),
+            "duty_permille": _int("duty"),
+            "wakes_timer":   _int("wakes_timer"),
+            "wakes_btn":     _int("wakes_btn"),
+            "wakes_cold":    _int("wakes_cold"),
+            "incomplete":    _int("incomplete"),
+            "reset":         q.get("reset"),
         }
+        frame["soh"] = soh
+        _append_history(mac, {"ts": frame["last_seen"], **soh})
 
     _save_config(config)
 
@@ -226,6 +276,54 @@ async def api_delete_frame(mac: str) -> JSONResponse:
     del config["frames"][mac]
     _save_config(config)
     return JSONResponse({"ok": True})
+
+
+@app.get("/api/frame/{mac}/power")
+async def api_frame_power(mac: str, limit: int = 200) -> JSONResponse:
+    """
+    Power/SoH history plus a duty-cycle summary for one frame.
+
+    `avg_current_ma` is an estimate, not a measurement: it multiplies the
+    observed awake fraction by `active_ma` and adds an assumed sleep floor.
+    Compare it against the real drain implied by how long a battery lasts —
+    a large gap means current is going somewhere this model doesn't see
+    (board-level standing drain, or a panel rail that never turned off).
+    """
+    samples = _load_history().get(mac, [])
+    recent = samples[-limit:] if limit > 0 else samples
+
+    summary: dict[str, Any] = {"samples": len(samples)}
+    complete = [s for s in recent if s.get("prev_awake_ms") and s.get("slept_ms")]
+    if complete:
+        awake_ms = sum(s["prev_awake_ms"] for s in complete)
+        slept_ms = sum(s["slept_ms"] for s in complete)
+        total_ms = awake_ms + slept_ms
+        active_ma, sleep_ma = 80.0, 0.03   # rough ESP32-S3 + panel figures
+        duty = awake_ms / total_ms if total_ms else 0.0
+        summary.update({
+            "cycles":           len(complete),
+            "mean_awake_ms":    round(awake_ms / len(complete)),
+            "mean_slept_ms":    round(slept_ms / len(complete)),
+            "duty_percent":     round(duty * 100, 3),
+            "avg_current_ma":   round(duty * active_ma + (1 - duty) * sleep_ma, 3),
+            "mean_wifi_ms":     round(sum(s.get("t_wifi") or 0 for s in complete) / len(complete)),
+            "mean_fetch_ms":    round(sum(s.get("t_fetch") or 0 for s in complete) / len(complete)),
+            "mean_display_ms":  round(sum(s.get("t_disp") or 0 for s in complete) / len(complete)),
+        })
+
+    latest = recent[-1] if recent else None
+    if latest:
+        # Counters are cumulative since the last power-on reset, so these are
+        # lifetime totals rather than totals over the returned window.
+        summary["incomplete_cycles"] = latest.get("incomplete")
+        summary["wakes"] = {
+            "timer":  latest.get("wakes_timer"),
+            "button": latest.get("wakes_btn"),
+            "cold":   latest.get("wakes_cold"),
+        }
+        summary["last_reset_reason"] = latest.get("reset")
+
+    return JSONResponse({"mac": mac, "summary": summary, "history": recent})
 
 
 def _render_frame_image(mac: str) -> "Image.Image":

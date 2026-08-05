@@ -4,6 +4,7 @@ idf_component_register(
         "nvs_config.c"
         "captive_portal.c"
         "epd_http.c"
+        "power_log.c"
         "GDEP133C02.c"
         "comm.c"
     INCLUDE_DIRS "."
@@ -14,6 +15,7 @@ idf_component_register(
         esp_http_server
         esp_http_client
         esp_event
+        esp_timer
         esp_driver_gpio
         esp_driver_spi
         freertos

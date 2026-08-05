@@ -6,6 +6,7 @@
 #include "esp_http_client.h"
 #include "esp_heap_caps.h"
 #include "GDEP133C02.h"
+#include "power_log.h"
 
 static const char *TAG = "epd_http";
 
@@ -38,17 +39,32 @@ esp_err_t epd_http_fetch_and_display(const char *server_url, const char *mac_str
                                      const frame_soh_t *soh)
 {
     /* Build URL: {server_url}/frame/{mac}/image?rssi=X&wakeup=Y&... */
-    char url[512];
-    if (soh->voltage_mv >= 0) {
-        snprintf(url, sizeof(url),
-            "%s/frame/%s/image?rssi=%d&voltage_mv=%d&wakeup=%s&fw_ver=%s&heap=%d",
-            server_url, mac_str,
-            soh->rssi, soh->voltage_mv, soh->wakeup, soh->fw_ver, soh->heap);
-    } else {
-        snprintf(url, sizeof(url),
-            "%s/frame/%s/image?rssi=%d&wakeup=%s&fw_ver=%s&heap=%d",
-            server_url, mac_str,
-            soh->rssi, soh->wakeup, soh->fw_ver, soh->heap);
+    char url[768];
+    int n = snprintf(url, sizeof(url),
+        "%s/frame/%s/image?rssi=%d&wakeup=%s&fw_ver=%s&heap=%d",
+        server_url, mac_str, soh->rssi, soh->wakeup, soh->fw_ver, soh->heap);
+    if (soh->voltage_mv >= 0 && n > 0 && n < (int)sizeof(url)) {
+        n += snprintf(url + n, sizeof(url) - n, "&voltage_mv=%d", soh->voltage_mv);
+    }
+
+    /* Deep-sleep cycle accounting. `slept_ms` is the sleep that just ended;
+       the prev_* timings describe the last cycle that ran to completion,
+       since this cycle's display phase hasn't happened yet. */
+    power_log_stats_t pw;
+    power_log_get(&pw);
+    if (n > 0 && n < (int)sizeof(url)) {
+        snprintf(url + n, sizeof(url) - n,
+            "&boots=%lu&slept_ms=%lu&req_sleep_ms=%lu&prev_awake_ms=%lu"
+            "&t_wifi=%lu&t_fetch=%lu&t_disp=%lu&duty=%lu"
+            "&wakes_timer=%lu&wakes_btn=%lu&wakes_cold=%lu"
+            "&incomplete=%lu&reset=%s",
+            (unsigned long)pw.boot_count, (unsigned long)pw.slept_ms,
+            (unsigned long)pw.requested_ms, (unsigned long)pw.prev_awake_ms,
+            (unsigned long)pw.prev_wifi_ms, (unsigned long)pw.prev_fetch_ms,
+            (unsigned long)pw.prev_display_ms, (unsigned long)pw.duty_permille,
+            (unsigned long)pw.wakes_timer, (unsigned long)pw.wakes_button,
+            (unsigned long)pw.wakes_cold, (unsigned long)pw.incomplete,
+            pw.reset_reason);
     }
     ESP_LOGI(TAG, "Fetching image from %s", url);
 
@@ -74,9 +90,11 @@ esp_err_t epd_http_fetch_and_display(const char *server_url, const char *mac_str
         return ESP_FAIL;
     }
 
+    power_log_phase_begin(PWR_PHASE_FETCH);
     esp_err_t err = esp_http_client_perform(client);
     int http_status = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
+    power_log_phase_end(PWR_PHASE_FETCH);
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
@@ -96,8 +114,10 @@ esp_err_t epd_http_fetch_and_display(const char *server_url, const char *mac_str
 
     ESP_LOGI(TAG, "Image received (%zu bytes), displaying", ctx.written);
 
+    power_log_phase_begin(PWR_PHASE_DISPLAY);
     initEPD();
     pic_display_test(buf);
+    power_log_phase_end(PWR_PHASE_DISPLAY);
 
     heap_caps_free(buf);
     ESP_LOGI(TAG, "Display complete");

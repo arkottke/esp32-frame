@@ -14,7 +14,7 @@ Each frame wakes from deep sleep, fetches a pre-rendered image from a local Pyth
 sudo pacman -S python cmake ninja wget git base-devel
 ```
 
-### 2. Install ESP-IDF 4.4.4
+### 2. Install ESP-IDF v6.0.1
 
 The firmware targets ESP-IDF v6.0.1. Clone it to a stable location:
 

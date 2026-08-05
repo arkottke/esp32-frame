@@ -10,7 +10,7 @@ This repo contains two things:
 
 **Display**: GDEP133C02 — 13.3-inch, 1200×1600, 6-color ACeP (Advanced Color ePaper).  
 **MCU**: ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB PSRAM).  
-**Framework**: ESP-IDF 4.4.4 (CMake).
+**Framework**: ESP-IDF v6.0.1 (CMake).
 
 ## Build & Flash (Firmware)
 
@@ -73,6 +73,7 @@ app_main.c  →  nvs_config.c (WiFi creds / server URL / poll interval)
 | `main/nvs_config.c/h` | NVS read/write for `frame_cfg` namespace |
 | `main/captive_portal.c/h` | SoftAP + DNS redirect + config web form |
 | `main/epd_http.c/h` | HTTP GET `/frame/{mac}/image` → PSRAM buffer → `pic_display_test()` |
+| `main/power_log.c/h` | Deep-sleep cycle accounting in RTC memory (awake/asleep time, wake causes, phase timings) |
 | `main/GDEP133C02.c/h` | EPD command layer (init, full refresh, partial update) — from ref |
 | `main/comm.c/h` | SPI3_HOST (10 MHz) + GPIO HAL — from ref |
 | `main/pindefine.h` | All pin assignments; modify here when retargeting hardware |
@@ -86,6 +87,7 @@ main.py (FastAPI)
     GET /                   →  templates/index.html  (frame management UI)
     POST /api/frame/{mac}   →  update name/plugin/poll_seconds in config.json
     POST /api/upload        →  save image to uploads/
+    GET /api/frame/{mac}/power → power/SoH history + duty-cycle summary
 
 plugins/
     base.py        abstract Plugin.render() → PIL.Image (1200×1600 RGB)
@@ -96,6 +98,7 @@ plugins/
 
 dither.py          PIL image → 960,000-byte EPD binary
 config.json        frame registry (auto-created; MAC → name/plugin/last_seen)
+soh_history.json   rolling power/SoH samples per MAC (auto-created, capped at 2000)
 uploads/           user-uploaded images
 ```
 

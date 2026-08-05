@@ -16,6 +16,8 @@ server/.venv/
 server/*.pyc
 server/uploads/
 server/config.json
+server/soh_history.json
+server/config/
 __pycache__/
 *.pyc
 .venv/

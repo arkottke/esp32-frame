@@ -15,6 +15,7 @@
 #include "nvs_config.h"
 #include "captive_portal.h"
 #include "epd_http.h"
+#include "power_log.h"
 #include "GDEP133C02.h"
 #include "comm.h"
 #include "pindefine.h"
@@ -142,6 +143,37 @@ static int read_battery_mv(void)
 }
 #endif
 
+/* -------------------------------------------------------------------------
+ * Deep sleep entry — single exit point for every path in app_main
+ * -----------------------------------------------------------------------*/
+static void enter_deep_sleep(uint32_t seconds)
+{
+    /* Power down the EPD panel rail before sleeping — otherwise its boost/driver
+       circuitry stays energized for the whole poll interval and drains the battery.
+       gpio_hold_en + gpio_deep_sleep_hold_en latch the level through deep sleep,
+       since GPIO45 isn't in the RTC domain and would otherwise float once the
+       digital domain powers down. */
+    setGpioLevel(LOAD_SW, GPIO_LOW);
+    gpio_hold_en(LOAD_SW);
+    gpio_deep_sleep_hold_en();
+
+    /* SW2 can wake the frame early for a manual refresh. Per the board manual,
+       all buttons are active-HIGH, so SW2 idles LOW and needs an internal
+       pull-down (not pull-up) plus ANY_HIGH as the wake edge. */
+    rtc_gpio_pulldown_en(SW2);
+    rtc_gpio_pullup_dis(SW2);
+    gpio_set_direction(SW2, GPIO_MODE_INPUT);
+    if (gpio_get_level(SW2) != 0) {
+        ESP_LOGW(TAG, "SW2 reads HIGH at sleep time — skipping ext1 wakeup this cycle");
+    } else {
+        esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
+    }
+
+    power_log_before_sleep(seconds);
+    ESP_LOGI(TAG, "Entering deep sleep for %lu s", (unsigned long)seconds);
+    esp_deep_sleep((uint64_t)seconds * 1000000ULL);
+}
+
 static void get_mac_string(char *out, size_t out_len)
 {
     uint8_t mac[6];
@@ -170,6 +202,8 @@ void app_main(void)
     else if (wakeup_causes & BIT(ESP_SLEEP_WAKEUP_EXT1))  ESP_LOGI(TAG, "Woke from SW2 (manual refresh)");
     else                                                   ESP_LOGI(TAG, "Cold boot");
 
+    power_log_boot(wakeup_causes);
+
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -194,14 +228,13 @@ void app_main(void)
              cfg.ssid, cfg.server_url, (unsigned long)cfg.poll_seconds);
 
     /* Connect to WiFi */
+    power_log_phase_begin(PWR_PHASE_WIFI);
     err = wifi_connect(cfg.ssid, cfg.password);
+    power_log_phase_end(PWR_PHASE_WIFI);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi connect failed, sleeping %lu s before retry",
                  (unsigned long)cfg.poll_seconds);
-        setGpioLevel(LOAD_SW, GPIO_LOW);
-        gpio_hold_en(LOAD_SW);
-        gpio_deep_sleep_hold_en();
-        esp_deep_sleep((uint64_t)cfg.poll_seconds * 1000000ULL);
+        enter_deep_sleep(cfg.poll_seconds);
     }
 
     /* Get MAC address for frame identity */
@@ -239,26 +272,5 @@ void app_main(void)
                  esp_err_to_name(err));
     }
 
-    /* Power down the EPD panel rail before sleeping — otherwise its boost/driver
-       circuitry stays energized for the whole poll interval and drains the battery.
-       gpio_hold_en + gpio_deep_sleep_hold_en latch the level through deep sleep,
-       since GPIO45 isn't in the RTC domain and would otherwise float once the
-       digital domain powers down. */
-    setGpioLevel(LOAD_SW, GPIO_LOW);
-    gpio_hold_en(LOAD_SW);
-    gpio_deep_sleep_hold_en();
-
-    /* Sleep until next poll; SW2 can also wake early for a manual refresh.
-       Per the board manual, all buttons are active-HIGH, so SW2 idles LOW and
-       needs an internal pull-down (not pull-up) plus ANY_HIGH as the wake edge. */
-    rtc_gpio_pulldown_en(SW2);
-    rtc_gpio_pullup_dis(SW2);
-    gpio_set_direction(SW2, GPIO_MODE_INPUT);
-    if (gpio_get_level(SW2) != 0) {
-        ESP_LOGW(TAG, "SW2 reads HIGH at sleep time — skipping ext1 wakeup this cycle");
-    } else {
-        esp_sleep_enable_ext1_wakeup(1ULL << SW2, ESP_EXT1_WAKEUP_ANY_HIGH);
-    }
-    ESP_LOGI(TAG, "Entering deep sleep for %lu s", (unsigned long)cfg.poll_seconds);
-    esp_deep_sleep((uint64_t)cfg.poll_seconds * 1000000ULL);
+    enter_deep_sleep(cfg.poll_seconds);
 }
